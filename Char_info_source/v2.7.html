@@ -1,0 +1,2074 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>角色查看器v2.7</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Noto+Sans+SC:wght@300;400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --font-primary: 'Cinzel', serif;
+        --font-secondary: 'Noto Sans SC', sans-serif;
+
+        /* Defaults - overridden by JS */
+        --race-color: #ffffff;
+        --race-color-rgb: 255, 255, 255;
+        --tier-color: #808080;
+        --tier-color-rgb: 128, 128, 128;
+
+        /* REGION MAPPING */
+        --header-theme: var(--tier-color);
+        --header-theme-rgb: var(--tier-color-rgb);
+
+        --body-theme: var(--race-color);
+        --body-theme-rgb: var(--race-color-rgb);
+
+        --text-color: #f0f0f0;
+        --text-muted-color: #b0b0b0;
+        --card-bg: #1e1e24;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        min-height: 100vh;
+        height: auto;
+        font-family: var(--font-secondary);
+        color: var(--text-color);
+        background-color: transparent;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding-top: 20px;
+        padding-bottom: 40px;
+        overflow-x: hidden;
+      }
+
+      .card-wrapper {
+        position: relative;
+        width: 100%;
+        max-width: 480px;
+        margin: 0 10px;
+        z-index: 1;
+      }
+
+      /* 外圈分離光：深色主題下強化卡片與外部環境的分界 */
+      .card-wrapper::before {
+        content: '';
+        position: absolute;
+        inset: -10px;
+        border-radius: 24px;
+        pointer-events: none;
+        z-index: -1;
+        background:
+          radial-gradient(
+            120% 75% at 50% -5%,
+            rgba(var(--header-theme-rgb), 0.34) 0%,
+            rgba(var(--header-theme-rgb), 0.14) 38%,
+            transparent 74%
+          ),
+          linear-gradient(
+            180deg,
+            rgba(var(--header-theme-rgb), 0.22) 0%,
+            rgba(var(--header-theme-rgb), 0.06) 30%,
+            transparent 62%
+          );
+        box-shadow:
+          0 0 0 1px rgba(var(--header-theme-rgb), 0.2),
+          0 0 24px rgba(var(--header-theme-rgb), 0.22);
+        filter: blur(8px);
+        opacity: 1;
+      }
+
+      .card-background-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 16px;
+        overflow: hidden;
+        z-index: 0;
+
+        /* 固定深色底：稍微提高通透感，讓主題光感透一點回來 */
+        background: linear-gradient(
+          180deg,
+          rgba(16, 21, 32, 0.9) 0%,
+          rgba(13, 18, 29, 0.92) 56%,
+          rgba(10, 14, 23, 0.94) 100%
+        );
+
+        /* 邊框/陰影保留層級感，但降低亮主題下“壓迫感” */
+        border: 1px solid rgba(var(--header-theme-rgb), 0.72);
+        border-top: 2px solid rgba(var(--header-theme-rgb), 1);
+        box-shadow:
+          0 14px 36px rgba(0, 0, 0, 0.78),
+          0 0 28px rgba(var(--header-theme-rgb), 0.24),
+          0 -2px 30px rgba(var(--header-theme-rgb), 0.42),
+          inset 0 0 30px rgba(0, 0, 0, 0.34),
+          inset 0 1px 0 rgba(var(--header-theme-rgb), 0.75);
+
+        backdrop-filter: blur(2px) saturate(136%);
+        -webkit-backdrop-filter: blur(2px) saturate(136%);
+        transition: all 0.5s ease;
+      }
+
+      /* 特效疊層：只加光效，不改主體底色 */
+      .card-background-layer::before,
+      .card-background-layer::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        transition: opacity 0.4s ease;
+      }
+
+      /* 頂部層級聚光（tier）：增強 LED 感與層級可讀性 */
+      .card-background-layer::before {
+        z-index: 1;
+        opacity: 1;
+        mix-blend-mode: screen;
+        background-image:
+          radial-gradient(
+            140% 95% at 50% -8%,
+            rgba(var(--header-theme-rgb), 0.66) 0%,
+            rgba(var(--header-theme-rgb), 0.3) 32%,
+            rgba(var(--header-theme-rgb), 0.08) 58%,
+            transparent 78%
+          ),
+          linear-gradient(
+            180deg,
+            rgba(var(--header-theme-rgb), 0.48) 0%,
+            rgba(var(--header-theme-rgb), 0.16) 26%,
+            transparent 56%
+          );
+      }
+
+      /* 底部種族氛圍 + 暗角（race） */
+      .card-background-layer::after {
+        z-index: 1;
+        opacity: 0.92;
+        background-image:
+          radial-gradient(circle at 50% 82%, rgba(var(--body-theme-rgb), 0.26) 0%, transparent 74%),
+          radial-gradient(circle at 50% 48%, transparent 58%, rgba(0, 0, 0, 0.33) 100%);
+      }
+
+      .card-wrapper.high-tier .card-background-layer {
+        border: 1px solid rgba(var(--header-theme-rgb), 0.95);
+        border-top: 3px solid rgba(var(--header-theme-rgb), 1);
+        box-shadow:
+          0 16px 44px rgba(0, 0, 0, 0.88),
+          0 0 34px rgba(var(--header-theme-rgb), 0.28),
+          inset 0 0 48px rgba(0, 0, 0, 0.46);
+      }
+
+      .card-wrapper.high-tier .card-background-layer::before {
+        opacity: 0.96;
+      }
+
+      .card-wrapper.high-tier .card-background-layer::after {
+        opacity: 1;
+      }
+
+      /* Legendary Pulse for Tier 6（保留脈衝，但降低峰值） */
+      .card-wrapper.tier-6 .card-background-layer {
+        animation: legendary-pulse 5s infinite ease-in-out;
+      }
+
+      @keyframes legendary-pulse {
+        0% {
+          border-color: rgba(var(--header-theme-rgb), 0.75);
+          box-shadow:
+            0 14px 36px rgba(0, 0, 0, 0.82),
+            0 0 22px rgba(var(--header-theme-rgb), 0.2),
+            inset 0 0 28px rgba(0, 0, 0, 0.36);
+        }
+        50% {
+          border-color: rgba(var(--header-theme-rgb), 1);
+          box-shadow:
+            0 16px 42px rgba(0, 0, 0, 0.88),
+            0 0 36px rgba(var(--header-theme-rgb), 0.35),
+            inset 0 0 40px rgba(var(--header-theme-rgb), 0.14);
+        }
+        100% {
+          border-color: rgba(var(--header-theme-rgb), 0.75);
+          box-shadow:
+            0 14px 36px rgba(0, 0, 0, 0.82),
+            0 0 22px rgba(var(--header-theme-rgb), 0.2),
+            inset 0 0 28px rgba(0, 0, 0, 0.36);
+        }
+      }
+
+      .frame-layer {
+        position: absolute;
+        top: -25px;
+        left: -5px;
+        width: calc(100% + 10px);
+        height: calc(100% + 50px);
+        z-index: 10;
+        pointer-events: none;
+        display: none;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .frame-svg {
+        width: 100%;
+        fill: none;
+        stroke: var(--header-theme);
+        stroke-width: 2;
+        filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 5px rgba(var(--header-theme-rgb), 0.8));
+        vector-effect: non-scaling-stroke;
+      }
+
+      /*
+         Frame Split Strategy:
+         .frame-top: Contains the fixed-ratio arc/header part. Does not stretch.
+         .frame-body: Contains the vertical lines. Stretches to fill remaining height.
+         .frame-bottom: Optional, for bottom closure if needed.
+      */
+      .frame-top {
+        width: 100%;
+        height: 100px; /* Fixed height for the arc */
+        flex-shrink: 0;
+      }
+      .frame-body {
+        width: 100%;
+        flex-grow: 1; /* Fills the rest */
+      }
+
+      #particle-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+        mix-blend-mode: normal;
+        opacity: 0.78;
+      }
+
+      /* iOS Safari 對 canvas + blend 更容易“看不見”，給可見性兜底 */
+      .ios-safari #particle-canvas {
+        mix-blend-mode: normal;
+        opacity: 0.62;
+      }
+
+      .sheet-content-wrapper {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+      }
+
+      /* === HEADER SECTION: TIER COLOR DOMINANCE === */
+      .sheet-header {
+        padding: 50px 20px 25px 20px;
+        text-align: center;
+        /* Defined box for header to separate it visually */
+        background: radial-gradient(ellipse at 50% 0%, rgba(var(--header-theme-rgb), 0.15) 0%, transparent 80%);
+        border-bottom: 1px solid rgba(var(--header-theme-rgb), 0.2);
+        position: relative;
+        margin-bottom: 10px;
+      }
+
+      /* Tech/Magic pattern overlay for header */
+      .sheet-header::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image:
+          linear-gradient(90deg, transparent 95%, rgba(var(--header-theme-rgb), 0.1) 95%),
+          linear-gradient(0deg, transparent 95%, rgba(var(--header-theme-rgb), 0.1) 95%);
+        background-size: 40px 40px;
+        mask-image: linear-gradient(to bottom, rgba(148, 148, 148, 0.712) 0%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to bottom, rgba(148, 148, 148, 0.712) 0%, transparent 100%);
+        pointer-events: none;
+        z-index: -1;
+      }
+
+      .level-badge {
+        background: rgba(0, 0, 0, 0.7);
+        border: 1px solid var(--header-theme);
+        padding: 4px 16px;
+        border-radius: 50px;
+        color: var(--header-theme);
+        font-family: var(--font-primary);
+        font-size: 0.9rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        box-shadow: 0 0 15px rgba(var(--header-theme-rgb), 0.2);
+        display: inline-block;
+        margin-bottom: 15px;
+        text-shadow: 0 0 8px rgba(var(--header-theme-rgb), 0.6);
+        position: relative;
+        z-index: 20;
+      }
+
+      .char-name {
+        font-family: var(--font-primary);
+        font-size: 2.1rem;
+        font-weight: 700;
+        color: #fff;
+        margin: 0 0 10px 0;
+        text-shadow: 0 0 20px rgba(var(--header-theme-rgb), 0.6);
+        letter-spacing: 2px;
+        line-height: 1.1;
+      }
+
+      .char-meta-row {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 12px;
+        font-size: 0.95rem;
+        color: #ddd;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 500;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+      }
+
+      .meta-separator {
+        color: var(--header-theme);
+        font-size: 0.6rem;
+        align-self: center;
+        opacity: 0.8;
+      }
+
+      span[data-tier-name] {
+        color: var(--header-theme);
+        font-weight: bold;
+        text-shadow: 0 0 10px rgba(var(--header-theme-rgb), 0.4);
+      }
+
+      /* === BODY SECTION: RACE COLOR DOMINANCE === */
+      .sheet-body {
+        padding: 20px 30px 40px 30px;
+      }
+
+      .card-wrapper.high-tier .sheet-body {
+        padding-left: 30px;
+        padding-right: 30px;
+        padding-bottom: 50px;
+      }
+
+      .attributes-grid {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 30px;
+      }
+
+      .attribute-item {
+        flex: 0 1 30%;
+        min-width: 80px;
+        position: relative;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+
+        /* Top border uses RACE Color */
+        border-top: 2px solid var(--body-theme);
+
+        clip-path: polygon(0% 0%, 100% 0%, 100% 85%, 50% 100%, 0% 85%);
+        padding: 15px 5px 30px 5px;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          transform 0.2s,
+          background 0.2s;
+        min-height: 110px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .attribute-item:hover {
+        transform: translateY(-3px);
+        background: rgba(var(--body-theme-rgb), 0.1);
+        box-shadow: 0 5px 20px rgba(var(--body-theme-rgb), 0.15);
+        border-color: rgba(var(--body-theme-rgb), 0.4);
+      }
+
+      .attribute-name {
+        font-size: 1rem;
+        color: #fff;
+        margin-bottom: 5px;
+        font-weight: bold;
+        opacity: 0.9;
+      }
+      .attribute-total {
+        font-family: var(--font-primary);
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #fff;
+        line-height: 1;
+        text-shadow: 0 2px 15px rgba(var(--body-theme-rgb), 0.5);
+      }
+      .attribute-formula {
+        display: none;
+        font-size: 0.8rem;
+        color: var(--body-theme);
+        margin-top: 5px;
+        font-weight: bold;
+      }
+      .attribute-item.show-formula .attribute-total {
+        display: none;
+      }
+      .attribute-item.show-formula .attribute-formula {
+        display: block;
+      }
+
+      .vitals-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        margin-bottom: 30px;
+        max-width: 650px;
+        margin-left: auto;
+        margin-right: auto;
+        flex-shrink: 0;
+      }
+
+      .vital-item {
+        background: rgba(20, 20, 20, 0.6);
+        border-radius: 8px;
+        padding: 10px;
+        text-align: center;
+        border-bottom: 3px solid #555;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+      }
+      .vital-item.hp {
+        border-bottom-color: #d63031;
+        background: linear-gradient(180deg, rgba(214, 48, 49, 0.1) 0%, rgba(20, 20, 20, 0.6) 100%);
+      }
+      .vital-item.mp {
+        border-bottom-color: #0984e3;
+        background: linear-gradient(180deg, rgba(9, 132, 227, 0.1) 0%, rgba(20, 20, 20, 0.6) 100%);
+      }
+      .vital-item.sp {
+        border-bottom-color: #fdcb6e;
+        background: linear-gradient(180deg, rgba(253, 203, 110, 0.1) 0%, rgba(20, 20, 20, 0.6) 100%);
+      }
+      .vital-value {
+        font-family: var(--font-primary);
+        font-size: 1.3rem;
+        font-weight: bold;
+        color: #fff;
+        margin-top: 2px;
+        text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+      }
+      .vital-label {
+        font-size: 0.75rem;
+        color: #bbb;
+        font-weight: bold;
+        letter-spacing: 1px;
+      }
+
+      .tab-container {
+        display: flex;
+        flex-direction: column;
+      }
+      .tab-nav {
+        display: flex;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 20px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        flex-shrink: 0;
+      }
+      .tab-nav::-webkit-scrollbar {
+        display: none;
+      }
+      .tab-button {
+        flex: 1;
+        background: transparent;
+        border: none;
+        padding: 12px 20px;
+        color: #888;
+        cursor: pointer;
+        font-family: var(--font-secondary);
+        font-size: 1rem;
+        border-bottom: 2px solid transparent;
+        white-space: nowrap;
+        transition: all 0.3s;
+      }
+      .tab-button:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .tab-button.active {
+        color: var(--body-theme);
+        border-bottom-color: var(--body-theme);
+        font-weight: bold;
+        text-shadow: 0 0 10px rgba(var(--body-theme-rgb), 0.4);
+        background: linear-gradient(to top, rgba(var(--body-theme-rgb), 0.1), transparent);
+      }
+      .tab-content {
+        display: none;
+        animation: fadeIn 0.4s ease-out;
+        padding-bottom: 20px;
+      }
+      .tab-content.active {
+        display: block;
+      }
+
+      .card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-left: 3px solid var(--body-theme);
+        padding: 15px;
+        margin-bottom: 12px;
+        border-radius: 4px;
+        transition:
+          border-color 0.2s,
+          background 0.2s;
+      }
+      .card:hover {
+        border-color: rgba(var(--body-theme-rgb), 0.3);
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 5px;
+      }
+      .card-title {
+        margin: 0;
+        font-size: 1.15rem;
+        color: #fff;
+        font-weight: bold;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+      }
+      .card-subtitle {
+        font-size: 0.85rem;
+        color: #bbb;
+        font-style: italic;
+      }
+      .card-tags {
+        margin-bottom: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+      .card-tag {
+        display: inline-flex;
+        align-items: center;
+
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(0, 0, 0, 0.35) 100%);
+        padding: 5px 10px;
+        border-radius: 999px;
+
+        font-size: 0.8rem;
+        line-height: 1;
+        letter-spacing: 0.2px;
+        color: #e6e6e6;
+
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.08),
+          0 2px 10px rgba(0, 0, 0, 0.35);
+
+        transition:
+          transform 0.15s ease,
+          background 0.15s ease,
+          border-color 0.15s ease,
+          box-shadow 0.15s ease,
+          color 0.15s ease;
+      }
+
+      .card-tag:hover {
+        transform: translateY(-1px);
+        background: rgba(var(--body-theme-rgb), 0.12);
+        border-color: rgba(var(--body-theme-rgb), 0.45);
+        color: #fff;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.1),
+          0 4px 14px rgba(0, 0, 0, 0.45);
+      }
+      .card-body p {
+        margin: 5px 0;
+        font-size: 0.95rem;
+        line-height: 1.5;
+        color: #ddd;
+      }
+      .card-label {
+        color: var(--body-theme);
+        font-weight: bold;
+        margin-right: 5px;
+        opacity: 0.8;
+      }
+      .subsection-title {
+        color: var(--body-theme);
+        font-family: var(--font-primary);
+        font-size: 1.2rem;
+        margin: 15px 0 10px 0;
+        border-left: 3px solid var(--body-theme);
+        padding-left: 10px;
+        letter-spacing: 1px;
+        text-shadow: 0 0 10px rgba(var(--body-theme-rgb), 0.2);
+      }
+      .story {
+        background: rgba(0, 0, 0, 0.2);
+        padding: 20px;
+        border-radius: 6px;
+        line-height: 1.6; /* tighten paragraph line spacing */
+        color: #ddd;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        text-align: justify;
+        font-size: 1.05rem;
+      }
+
+      /* Full-width container for tag-like sections (e.g. 喜愛) */
+      .tags-box {
+        background: rgba(0, 0, 0, 0.2);
+        padding: 12px 12px;
+        border-radius: 6px;
+        color: #ddd;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        width: 100%;
+      }
+
+      .tags-box .card-tags {
+        margin-bottom: 0;
+      }
+
+      #save-to-lorebook-btn {
+        position: absolute;
+        top: auto;
+        bottom: 15px;
+        left: 52%;
+        right: auto;
+        background: rgba(30, 30, 30, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        z-index: 50;
+        font-size: 1.2rem;
+        transition: all 0.2s;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+      }
+      #save-to-lorebook-btn:hover {
+        background: rgba(60, 60, 60, 0.9);
+        box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+        border-color: #fff;
+      }
+
+      /* Single import button + menu (replaces the two old buttons in UI) */
+      #import-action-btn {
+        position: absolute;
+        top: auto;
+        bottom: 15px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(30, 30, 30, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        z-index: 60;
+        font-size: 1.2rem;
+        transition: all 0.2s;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+      }
+      #import-action-btn:hover {
+        background: rgba(60, 60, 60, 0.9);
+        box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+        border-color: #fff;
+      }
+
+      #import-action-menu {
+        position: absolute;
+        bottom: 55px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(20, 20, 20, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 10px;
+        padding: 6px;
+        z-index: 70;
+        min-width: 190px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        display: none;
+      }
+      #import-action-menu.show {
+        display: block;
+      }
+      #import-action-menu button {
+        width: 100%;
+        background: transparent;
+        border: 1px solid transparent;
+        color: #eee;
+        padding: 10px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: left;
+        font-size: 0.95rem;
+        font-family: var(--font-secondary);
+        transition: all 0.15s ease;
+      }
+      #import-action-menu button:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.12);
+      }
+
+      @media (max-width: 600px) {
+        .attribute-item {
+          flex: 0 1 30%;
+          min-width: 80px;
+        }
+        .char-name {
+          font-size: 2.2rem;
+        }
+
+        .card-wrapper.high-tier .sheet-body {
+          padding-left: 30px;
+          padding-right: 30px;
+        }
+        .frame-layer {
+          left: -5px;
+          width: calc(100% + 10px);
+        }
+      }
+
+      /* Desktop Layout Optimization */
+      @media (min-width: 900px) {
+        .card-wrapper {
+          max-width: 900px;
+        }
+
+        /* 單欄：保持流式從上到下，不再使用網格拆分左右列 */
+        .sheet-body {
+          display: block;
+        }
+
+        .attributes-grid {
+          justify-content: center;
+          gap: 12px;
+        }
+
+        .attribute-item {
+          flex: 0 0 140px; /* fix width to keep mobile-like proportions */
+          max-width: 150px;
+          min-width: 120px;
+        }
+
+        .vitals-grid {
+          grid-template-columns: repeat(3, 1fr);
+          gap: 18px;
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .tab-nav {
+          justify-content: center;
+        }
+
+        .tab-button {
+          flex: 0 1 auto;
+          min-width: 100px;
+          font-size: 1.05rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card-wrapper" id="card-wrapper">
+      <div class="frame-layer" id="frame-layer"></div>
+
+      <div class="card-background-layer">
+        <canvas id="particle-canvas"></canvas>
+      </div>
+
+      <div class="sheet-content-wrapper">
+        <header class="sheet-header">
+          <span class="level-badge" data-level>Lv. ?</span>
+          <h1 class="char-name" data-name>Loading...</h1>
+          <div class="char-meta-row">
+            <span data-race>Race</span> <span class="meta-separator">◆</span> <span data-identity>Identity</span>
+            <span class="meta-separator">◆</span> <span data-class>Class</span> <span class="meta-separator">◆</span>
+            <span data-tier-name>Tier</span>
+          </div>
+        </header>
+
+        <div class="sheet-body">
+          <div class="attributes-grid" data-attributes></div>
+          <div class="vitals-grid" data-vitals></div>
+
+          <div class="tab-container">
+            <nav class="tab-nav">
+              <button class="tab-button" data-tab-target="#tab-profile">檔案</button>
+              <button class="tab-button" data-tab-target="#tab-skills">技能</button>
+              <button class="tab-button" data-tab-target="#tab-equipment">裝備</button>
+              <button class="tab-button" data-tab-target="#tab-inventory">物品</button>
+              <button class="tab-button" data-tab-target="#tab-divinity">登神長階</button>
+              <button class="tab-button" data-tab-target="#tab-backstory">背景故事</button>
+            </nav>
+
+            <div class="tab-content-container">
+              <div id="tab-profile" class="tab-content"></div>
+              <div id="tab-skills" class="tab-content"></div>
+              <div id="tab-equipment" class="tab-content"></div>
+              <div id="tab-inventory" class="tab-content"></div>
+              <div id="tab-divinity" class="tab-content"></div>
+              <div id="tab-backstory" class="tab-content"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script id="data-source" type="text/yaml">
+      $1
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const ua = navigator.userAgent || '';
+        const isIOS =
+          /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+        const isIOSSafari = isIOS && isSafari;
+        if (isIOSSafari) {
+          document.documentElement.classList.add('ios-safari');
+        }
+
+        const raceColorMap = {
+          神祗: '#FFFFFF', // White (Brighter)
+
+          // Dragonkind
+          龍族: '#FFD700', // Gold
+          龍姬: '#FFD700',
+          龍裔: '#FFA500', // Orange (Brighter than B8860B)
+          巨龍: '#FFD700',
+          古龍: '#FFD700',
+          亞龍: '#FFAE42', // Yellow Orange (Brighter)
+
+          // Blood/Undead
+          血姬: '#FF0000', // Red (Brighter than DC143C)
+          血族: '#DC143C', // Crimson (Brighter than 8B0000)
+          亡靈種族: '#32CD32', // LimeGreen (Brighter than 2E8B57)
+          不死生物: '#32CD32',
+
+          // Winged
+          翼民: '#00BFFF', // DeepSkyBlue (Brighter than 87CEFA)
+          翼族: '#00BFFF',
+          墮羽民: '#9370DB', // MediumPurple (Brighter than 708090)
+          女妖: '#FF1493', // DeepPink (Brighter than 708090)
+
+          // Human/Demi-human
+          人類: '#FFDAB9', // PeachPuff (Brighter than DEB887)
+          矮人: '#D2691E', // Chocolate (Brighter than A0522D)
+          半身人: '#FFD700', // Gold (Brighter than DAA520)
+
+          // Elves/Fae
+          精靈: '#00FF7F', // SpringGreen (Brighter than 8FBC8F)
+          光翅妖精: '#FFFF00', // Yellow (Brighter than FFFACD)
+          汐海妖精: '#00FFFF', // Cyan (Brighter than AFEEEE)
+          妖精: '#FF00FF', // Magenta (Brighter than FF69B4)
+          寧芙: '#FF00FF',
+
+          // Beast/Monster
+          獸族: '#FF4500', // OrangeRed (Brighter than B22222)
+          黑角民: '#00CED1', // DarkTurquoise (Brighter than 2F4F4F)
+          蛇女: '#00FF7F', // SpringGreen (Brighter than 20B2AA)
+          半人馬: '#FF8C00', // DarkOrange (Brighter than CD853F)
+          人魚: '#00FFFF', // Cyan (Brighter than 00CED1)
+          地精: '#32CD32', // LimeGreen (Brighter than 556B2F)
+          魔物: '#8A2BE2', // BlueViolet (Brighter than 483D8B)
+          深淵魔族: '#9400D3', // DarkViolet (Brighter than 4B0082)
+          異域生物: '#FF00FF', // Magenta (Brighter than 9400D3)
+
+          // Giants
+          巨人: '#D2691E', // Chocolate (Brighter than 8B4513)
+          半巨人: '#D2691E',
+          小巨人: '#D2691E',
+          霜巨人: '#00BFFF', // DeepSkyBlue (Brighter than B0C4DE)
+          泰坦人族: '#FFD700', // Gold (Brighter than B8860B)
+          山妖: '#DAA520', // Goldenrod (Brighter than 696969)
+          食人魔: '#7CFC00', // LawnGreen (Brighter than 556B2F)
+          巨魔: '#7CFC00',
+          雪怪: '#E0FFFF', // LightCyan (Brighter than F0F8FF)
+
+          // Spirits/Constructs/Others
+          詩靈: '#EE82EE', // Violet (Brighter than D8BFD8)
+          英靈: '#00BFFF', // DeepSkyBlue (Brighter than 1E90FF)
+          從者: '#00BFFF',
+          構裝體: '#00CED1', // DarkTurquoise (Brighter than C0C0C0)
+          人造生物: '#00FF7F', // SpringGreen (Brighter than 7FFFD4)
+          元素生物: '#FF0000', // Red (Brighter than FF4500)
+          植物生物: '#00FF00', // Lime (Brighter than 228B22)
+          不定形生物: '#7CFC00', // LawnGreen (Brighter than 32CD32)
+
+          其他: '#E0E0E0', // Gainsboro (Brighter than C0C0C0)
+        };
+        const tierColorMap = {
+          1: '#57595D', // Iron
+          2: '#50C878', // Uncommon Green
+          3: '#2196F3', // Magic Blue
+          4: '#9932CC', // Dark Orchid - Slightly deeper than previous purple to look more "Arcane"
+          5: '#FFD700', // Divine Gold
+          6: '#DC143C', // Legendary Red
+          7: '#00FFFF', // Transcendent Cyan
+        };
+        const attributeLabelMap = { 力量: '力', 敏捷: '敏', 體質: '體', 智力: '智', 精神: '精' };
+
+        function hexToRgb(hex) {
+          if (!hex || typeof hex !== 'string') return '128, 128, 128';
+          hex = hex.replace(/^#/, '');
+          if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return `${r}, ${g}, ${b}`;
+        }
+
+        function hexToRgbObj(hex) {
+          if (!hex || typeof hex !== 'string') return { r: 128, g: 128, b: 128 };
+          let h = hex.replace(/^#/, '');
+          if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+          const r = parseInt(h.substring(0, 2), 16);
+          const g = parseInt(h.substring(2, 4), 16);
+          const b = parseInt(h.substring(4, 6), 16);
+          return {
+            r: Number.isFinite(r) ? r : 128,
+            g: Number.isFinite(g) ? g : 128,
+            b: Number.isFinite(b) ? b : 128,
+          };
+        }
+
+        function rgbToHex(r, g, b) {
+          const toHex = v =>
+            Math.max(0, Math.min(255, Math.round(v)))
+              .toString(16)
+              .padStart(2, '0');
+          return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+        }
+
+        function harmonizeAccent(hex, mixTarget = '#94a3b8', mixRatio = 0.48, minLuma = 92, maxLuma = 188) {
+          const base = hexToRgbObj(hex);
+          const target = hexToRgbObj(mixTarget);
+
+          let r = base.r * (1 - mixRatio) + target.r * mixRatio;
+          let g = base.g * (1 - mixRatio) + target.g * mixRatio;
+          let b = base.b * (1 - mixRatio) + target.b * mixRatio;
+
+          const luma = () => 0.299 * r + 0.587 * g + 0.114 * b;
+          let current = luma();
+
+          if (current < minLuma) {
+            const t = (minLuma - current) / 255;
+            r = r + (255 - r) * t;
+            g = g + (255 - g) * t;
+            b = b + (255 - b) * t;
+            current = luma();
+          }
+
+          if (current > maxLuma) {
+            const t = (current - maxLuma) / 255;
+            r = r * (1 - t);
+            g = g * (1 - t);
+            b = b * (1 - t);
+          }
+
+          return rgbToHex(r, g, b);
+        }
+
+        function getSmartArray(input) {
+          if (input === undefined || input === null) return [];
+          if (Array.isArray(input)) return input;
+
+          const str = String(input).trim();
+          if (!str || str.toLowerCase() === 'null' || str.toLowerCase() === 'none') return [];
+
+          let processed = str.replace(/\]\s*\[/g, '], [');
+          processed = processed.replace(/^[\s\["']+|[\s\]"']+$/g, '');
+          const items = processed.split(/[,;|，；、]/);
+
+          return items
+            .map(s => {
+              return s.trim().replace(/^['"\[\(]+|['"\]\)]+$/g, '');
+            })
+            .filter(s => s && s !== 'null');
+        }
+
+        function cleanYaml(yamlStr) {
+          if (!yamlStr) return '';
+          // 基礎符號清洗（只修復會導致 YAML 結構解析失敗的字符；不替換正文標點）
+          yamlStr = yamlStr
+            .replace(/\u00A0/g, ' ')
+            .replace(/\t/g, '  ')
+            .replace(/】/g, ']')
+            .replace(/【/g, '[');
+
+          const lines = yamlStr.split('\n');
+          const sensitiveKeys = [
+            '身份',
+            '職業',
+            '性格',
+            '喜愛',
+            '外貌特質',
+            '衣物裝飾',
+            '背景故事',
+            '描述',
+            '效果',
+            '標籤',
+            '消耗',
+            '類型',
+            '品質',
+            '神位',
+            '名稱',
+            '姓名',
+            '種族',
+            '等級',
+            '生命層級',
+          ];
+          const attrKeys = ['力量', '敏捷', '體質', '智力', '精神'];
+
+          const cleanedLines = lines.map(line => {
+            // 只規範 YAML 結構分隔符：把“鍵：值”的全角冒號變為半角冒號；不動正文標點（，；等）
+            line = line.replace(/^(\s*)(-\s*)?([-\w\u4e00-\u9fa5]+)\s*：/, (_m, indent, dash, key) => {
+              return `${indent}${dash || ''}${key}:`;
+            });
+
+            // 支持普通鍵值行與 "- 鍵: 值" 的列表對象行
+            const match = line.match(/^(\s*)(-\s*)?([-\w\u4e00-\u9fa5]+)\s*:\s*(.*)$/);
+            if (!match) return line;
+
+            const indent = match[1];
+            const dash = match[2] || '';
+            const key = match[3];
+            let val = match[4].trim();
+
+            if (!val) return line;
+            if (val.startsWith('|') || val.startsWith('>')) return line;
+
+            if (attrKeys.some(k => key.includes(k))) {
+              if ((/[+=]/.test(val) || val.includes('{')) && !/^["'].*["']$/.test(val)) {
+                val = val.replace(/"/g, '\\"');
+                return `${indent}${dash}${key}: "${val}"`;
+              }
+            }
+
+            const isSensitive = sensitiveKeys.some(k => key.includes(k));
+            const hasDangerousChars = /[\{\}\[\]]/.test(val);
+            const hasQuoteInside = val.includes('"');
+
+            const isFullyQuoted = /^["'].*["']$/.test(val);
+
+            if ((isSensitive || hasDangerousChars || hasQuoteInside) && !isFullyQuoted) {
+              val = val.replace(/"/g, '\\"');
+              return `${indent}${dash}${key}: "${val}"`;
+            }
+
+            return line;
+          });
+          return cleanedLines.join('\n');
+        }
+
+        function escapeHtml(str) {
+          const div = document.createElement('div');
+          div.textContent = String(str ?? '');
+          return div.innerHTML;
+        }
+
+        function visualizeForDisplay(str) {
+          // 讓不可見字符“可見”，方便玩家定位
+          return String(str ?? '')
+            .replace(/\t/g, '⇥') // TAB
+            .replace(/\u00A0/g, '⍽'); // NBSP
+        }
+
+        function buildFriendlyYamlError(e, originalYaml, cleanedYaml) {
+          const msg = escapeHtml((e && (e.reason || e.message)) || String(e));
+          const mark = e && e.mark;
+
+          if (!mark || typeof mark.line !== 'number') {
+            return `<div>${msg}</div>`;
+          }
+
+          const lineIndex = mark.line;
+          const column = typeof mark.column === 'number' ? mark.column : 0;
+
+          const originalLines = String(originalYaml ?? '').split('\n');
+          const cleanedLines = String(cleanedYaml ?? '').split('\n');
+
+          const originalLine = originalLines[lineIndex] ?? '';
+          const cleanedLine = cleanedLines[lineIndex] ?? '';
+
+          const cleanVisualRaw = visualizeForDisplay(cleanedLine);
+          const originalVisualRaw = visualizeForDisplay(originalLine);
+
+          const safeCleanLine = escapeHtml(cleanVisualRaw);
+          const safeOriginalLine = escapeHtml(originalVisualRaw);
+
+          // caret：列號以 jsyaml 的 column 為準（基於“用於解析的文本”）
+          const caretPad = ' '.repeat(Math.max(0, Math.min(column, cleanVisualRaw.length)));
+          const caretLine = `${caretPad}^`;
+
+          const symbol = cleanedLine.charAt(column) || '';
+          const codePoint = symbol ? symbol.codePointAt(0).toString(16).toUpperCase().padStart(4, '0') : '';
+
+          const symbolInfo = symbol
+            ? `出錯位置字符（用於解析的文本）：<span style="color:#ff6b6b;font-weight:700;">${escapeHtml(
+                symbol,
+              )}</span> <span style="opacity:0.8">(U+${codePoint})</span>`
+            : `出錯位置在行尾附近（常見原因：缺少引號/括號/冒號，或縮進不對齊）`;
+
+          // 上下文（原始文本）
+          const start = Math.max(0, lineIndex - 2);
+          const end = Math.min(originalLines.length - 1, lineIndex + 2);
+          const ctx = [];
+          for (let i = start; i <= end; i++) {
+            const ln = String(i + 1).padStart(4, ' ');
+            const text = escapeHtml(visualizeForDisplay(originalLines[i] ?? ''));
+            const isErr = i === lineIndex;
+            ctx.push(`${isErr ? '➡️' : '  '} ${ln} | ${text}`);
+          }
+
+          // 簡單啟發式提示
+          const hints = [];
+          if (/\t/.test(originalLine)) hints.push('該行包含 TAB（⇥）：請用空格替換 TAB，YAML 縮進必須用空格。');
+          if (/^\s*([-\w\u4e00-\u9fa5]+)\s*：/.test(originalLine))
+            hints.push('該行 key 使用了全角冒號（：）：請改為半角冒號（:）。');
+          if (/^\s*-\s*([-\w\u4e00-\u9fa5]+)\s*：/.test(originalLine))
+            hints.push('該行列表項 key 使用了全角冒號（：）：請改為半角冒號（:）。');
+          if (/[【】]/.test(originalLine)) hints.push('發現全角方括號（【】）：請改為 []。');
+
+          const hintsHtml =
+            hints.length > 0
+              ? `<div style="margin-top:10px;">
+                         <div style="font-weight:700;margin-bottom:6px;">可能的修復方向</div>
+                         <ul style="margin:0 0 0 18px;padding:0;line-height:1.5;">
+                           ${hints.map(h => `<li>${escapeHtml(h)}</li>`).join('')}
+                         </ul>
+                       </div>`
+              : '';
+
+          return `
+                  <div style="margin-bottom:6px;"><b>定位</b>：第 ${lineIndex + 1} 行，第 ${column + 1} 列</div>
+                  <div style="margin-bottom:8px;opacity:0.95;"><b>原因</b>：${msg}</div>
+                  <div style="margin-bottom:10px;">${symbolInfo}</div>
+
+                  <div style="font-weight:700;margin-bottom:6px;">用於解析的該行（已自動清洗）</div>
+                  <pre style="margin:0; padding:10px; border-radius:6px; background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.12); white-space:pre; overflow:auto;">${safeCleanLine}
+      ${escapeHtml(caretLine)}</pre>
+
+                  <details style="margin-top:10px;">
+                    <summary style="cursor:pointer; user-select:none;">查看原始數據附近幾行（帶行號）</summary>
+                    <pre style="margin-top:8px; padding:10px; border-radius:6px; background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.10); white-space:pre; overflow:auto;">${ctx.join(
+                      '\n',
+                    )}</pre>
+                  </details>
+
+                  <details style="margin-top:10px;">
+                    <summary style="cursor:pointer; user-select:none;">查看原始該行</summary>
+                    <pre style="margin-top:8px; padding:10px; border-radius:6px; background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.10); white-space:pre; overflow:auto;">${safeOriginalLine}</pre>
+                  </details>
+
+                  <div style="margin-top:10px; font-size:0.85rem; opacity:0.85;">
+                    注：列號基於“用於解析的文本（已清洗）”，通常與原始文本一致；若行首被自動修正（例如把“：”變為“:”），列號可能會有極小偏差。
+                  </div>
+
+                  ${hintsHtml}
+                `;
+        }
+
+        function parseRobust(yamlStr) {
+          const cleaned = cleanYaml(yamlStr);
+          try {
+            const data = jsyaml.load(cleaned);
+            if (!data) throw new Error('解析結果為空');
+            return { success: true, data: data };
+          } catch (e) {
+            console.error('Parsing failed:', e);
+            return { success: false, error: buildFriendlyYamlError(e, yamlStr, cleaned) };
+          }
+        }
+
+        function hasText(val) {
+          if (!val) return false;
+          const s = String(val).trim().toLowerCase();
+          return s !== '' && s !== 'null' && s !== 'none' && s !== '[]';
+        }
+
+        function hasArrayContent(arr) {
+          if (!arr || !Array.isArray(arr)) return false;
+          return arr.length > 0;
+        }
+
+        function parseAttributeValue(val) {
+          if (val === undefined || val === null) return 0;
+          const str = String(val).trim();
+          if (str.includes('=')) {
+            const parts = str.split('=');
+            const lastPart = parts[parts.length - 1].trim();
+            return parseInt(lastPart) || 0;
+          }
+          return parseInt(str) || 0;
+        }
+
+        function renderSheet(data, originalYaml) {
+          const wrapper = document.querySelector('.card-wrapper');
+          if (!wrapper) return;
+
+          const tierMap = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7 };
+          const tierText = (data.生命層級 || '').toString();
+          const tierStr = tierText.match(/第\s*([一二三四五六七1-7])\s*層級/);
+          let tier = 1;
+          if (tierStr) {
+            const token = tierStr[1];
+            tier = tierMap[token] || parseInt(token, 10) || 1;
+          } else {
+            const digitMatch = tierText.match(/[1-7]/);
+            tier = digitMatch ? parseInt(digitMatch[0], 10) : parseInt(tierText, 10) || 1;
+          }
+
+          let raceKey = '其他';
+          const race = data.種族 || '其他';
+          for (const k in raceColorMap) {
+            if (race.includes(k)) {
+              raceKey = k;
+              break;
+            }
+          }
+          const raceRawHex = raceColorMap[raceKey];
+          const tierRawHex = tierColorMap[tier] || tierColorMap[1];
+
+          // 保留“可一眼識別”的色相：層級色不混色；種族色只做極輕微調和
+          const raceHex = harmonizeAccent(raceRawHex, '#808080', 0.1, 84, 198);
+          const tierHex = tierRawHex;
+
+          const root = document.documentElement;
+          root.style.setProperty('--race-color', raceHex);
+          root.style.setProperty('--race-color-rgb', hexToRgb(raceHex));
+          root.style.setProperty('--tier-color', tierHex);
+          root.style.setProperty('--tier-color-rgb', hexToRgb(tierHex));
+
+          const frameLayer = document.getElementById('frame-layer');
+
+          // Reset classes
+          wrapper.className = 'card-wrapper';
+          wrapper.classList.add('tier-' + tier);
+
+          if (tier >= 5) {
+            frameLayer.style.display = 'flex';
+            wrapper.classList.add('high-tier');
+            // Split frame into Top (Arc) and Body (Sides)
+            // Top: Fixed height, preserves arc shape
+            // Body: Stretches vertically
+            frameLayer.innerHTML = `
+                     <svg class="frame-svg frame-top" viewBox="0 0 400 100" preserveAspectRatio="none">
+                       <!-- Top Arc -->
+                       <path d="M 5,100 A 195,80 0 0,1 395,100" />
+                       <path d="M 15,100 A 185,70 0 0,1 385,100" stroke-width="1" opacity="0.6" />
+                       <!-- Decorations -->
+                       <line x1="60" y1="60" x2="60" y2="90" stroke-width="1" />
+                       <line x1="340" y1="60" x2="340" y2="90" stroke-width="1" />
+                       <circle cx="60" cy="92" r="3" fill="var(--tier-color)" stroke="none"/>
+                       <circle cx="340" cy="92" r="3" fill="var(--tier-color)" stroke="none"/>
+                       <path d="M 200,2 L 205,15 L 220,20 L 205,25 L 200,38 L 195,25 L 180,20 L 195,15 Z" fill="var(--tier-color)" stroke="none" />
+                     </svg>
+                     <svg class="frame-svg frame-body" viewBox="0 0 400 100" preserveAspectRatio="none">
+                       <!-- Vertical Lines extending down -->
+                       <line x1="5" y1="0" x2="5" y2="100" />
+                       <line x1="395" y1="0" x2="395" y2="100" />
+                       <!-- Inner Faint Lines -->
+                       <line x1="15" y1="0" x2="15" y2="98" stroke-width="1" opacity="0.6" />
+                       <line x1="385" y1="0" x2="385" y2="98" stroke-width="1" opacity="0.6" />
+                       <!-- Bottom Closure (simulated at end of stretch) -->
+                       <line x1="5" y1="100" x2="395" y2="100" />
+                     </svg>
+                   `;
+          } else {
+            frameLayer.style.display = 'none';
+            frameLayer.innerHTML = '';
+          }
+
+          addImportButton(data, originalYaml);
+          document.querySelector('[data-name]').textContent = data.姓名 || 'Unknown';
+          document.querySelector('[data-level]').textContent = `Lv.${data.等級 || '?'}`;
+          document.querySelector('[data-race]').textContent = race;
+
+          const formatList = val => getSmartArray(val).join(' / ') || '-';
+          document.querySelector('[data-identity]').textContent = formatList(data.身份);
+          document.querySelector('[data-class]').textContent = formatList(data.職業);
+          document.querySelector('[data-tier-name]').textContent = data.生命層級 || 'Unknown';
+
+          const vitalsContainer = document.querySelector('[data-vitals]');
+          const res = data.資源 || data.屬性 || {};
+          vitalsContainer.innerHTML = `
+                  <div class="vital-item hp"><div class="vital-label">HP</div><div class="vital-value">${(
+                    res.HP || 0
+                  ).toLocaleString()}</div></div>
+                  <div class="vital-item mp"><div class="vital-label">MP</div><div class="vital-value">${(
+                    res.MP || 0
+                  ).toLocaleString()}</div></div>
+                  <div class="vital-item sp"><div class="vital-label">SP</div><div class="vital-value">${(
+                    res.SP || 0
+                  ).toLocaleString()}</div></div>
+                `;
+
+          const attributesContainer = document.querySelector('[data-attributes]');
+          attributesContainer.innerHTML = '';
+          const attributeKeys = ['力量', '敏捷', '體質', '智力', '精神'];
+          if (data.屬性) {
+            attributeKeys.forEach(key => {
+              const rawValue = data.屬性[key] !== undefined ? String(data.屬性[key]) : '0';
+              let total = rawValue;
+              let formula = '';
+              if (rawValue.includes('=')) {
+                const parts = rawValue.split('=');
+                formula = parts[0].trim();
+                total = parts[parts.length - 1].trim();
+              }
+              const label = attributeLabelMap[key] || key;
+              const item = document.createElement('div');
+              item.className = 'attribute-item';
+              item.innerHTML = `<span class="attribute-name">${label}</span><span class="attribute-total">${total}</span>${
+                formula ? `<span class="attribute-formula">${formula}</span>` : ''
+              }`;
+              if (formula) item.onclick = () => item.classList.toggle('show-formula');
+              attributesContainer.appendChild(item);
+            });
+          }
+
+          const profileContainer = document.querySelector('#tab-profile');
+          let profileHtml = '';
+
+          if (data.性格) {
+            let personalityText = data.性格;
+            if (Array.isArray(personalityText)) {
+              personalityText = personalityText.join('，');
+            }
+            if (typeof personalityText === 'string') {
+              personalityText = personalityText.replace(/\n/g, '<br>');
+            }
+            profileHtml += `<div class="subsection-title">性格</div><div class="story">${personalityText}</div>`;
+          }
+
+          if (data.喜愛) {
+            const rawLikes = String(data.喜愛);
+
+            // Tag-like input (array / comma/bracket list):
+            // Also treat Chinese punctuation lists (，；、) as tags, e.g.
+            // 喜愛: |
+            //   莎士比亞戲劇，亂點鴛鴦譜，月光，甜食，觀眾的掌聲。
+            const looksLikeTagList = Array.isArray(data.喜愛) || rawLikes.includes('[') || /[,;|，；、]/.test(rawLikes);
+
+            if (looksLikeTagList) {
+              const likesTagsHtml = createTags(data.喜愛);
+              profileHtml += `<div class="subsection-title">喜愛</div><div class="tags-box"><div class="card-tags">${likesTagsHtml}</div></div>`;
+            } else {
+              const likesText = rawLikes.replace(/\n/g, '<br>');
+              profileHtml += `<div class="subsection-title">喜愛</div><div class="story">${likesText}</div>`;
+            }
+          }
+
+          if (data.外貌特質) {
+            const appearance = data.外貌特質.replace(/\n/g, '<br>');
+            profileHtml += `<div class="subsection-title">外貌特質</div><div class="story">${appearance}</div>`;
+          }
+          if (data.衣物裝飾) {
+            const attire = data.衣物裝飾.replace(/\n/g, '<br>');
+            profileHtml += `<div class="subsection-title">衣物裝飾</div><div class="story">${attire}</div>`;
+          }
+          profileContainer.innerHTML =
+            profileHtml || '<div style="text-align:center;color:#666;padding:20px;">暫無檔案信息</div>';
+
+          renderCards(document.querySelector('#tab-skills'), data.技能, createSkillCard);
+          renderCards(document.querySelector('#tab-equipment'), data.裝備, createEquipmentCard);
+
+          const inventoryContainer = document.querySelector('#tab-inventory');
+          inventoryContainer.innerHTML = '';
+          if (hasArrayContent(data.道具)) {
+            inventoryContainer.innerHTML += '<div class="subsection-title">道具</div>';
+            renderCards(inventoryContainer, data.道具, createEquipmentCard);
+          }
+          if (hasArrayContent(data.特殊物品)) {
+            inventoryContainer.innerHTML += '<div class="subsection-title">特殊物品</div>';
+            renderCards(inventoryContainer, data.特殊物品, createEquipmentCard);
+          }
+          if (hasArrayContent(data.物品)) {
+            inventoryContainer.innerHTML += '<div class="subsection-title">物品</div>';
+            renderCards(inventoryContainer, data.物品, createEquipmentCard);
+          }
+
+          const divinityContainer = document.querySelector('#tab-divinity');
+          divinityContainer.innerHTML = '';
+
+          const divData = data.登神長階 || {};
+
+          const rawDeity = hasText(divData.神位) ? divData.神位 : hasText(data.神位) ? data.神位 : null;
+          const rawKingdom = divData.神國 || data.神國;
+
+          const rawElements = hasArrayContent(divData.要素)
+            ? divData.要素
+            : hasArrayContent(data.要素)
+              ? data.要素
+              : [];
+          const rawPowers = hasArrayContent(divData.權能) ? divData.權能 : hasArrayContent(data.權能) ? data.權能 : [];
+          const rawLaws = hasArrayContent(divData.法則) ? divData.法則 : hasArrayContent(data.法則) ? data.法則 : [];
+
+          if (rawDeity) {
+            divinityContainer.innerHTML += `<div class="subsection-title" style="border:none; text-align:center; font-size:1.6rem; text-shadow:0 0 10px var(--tier-color); margin-bottom:15px; color:var(--tier-color)">${rawDeity}</div>`;
+          }
+          if (rawKingdom && hasText(rawKingdom.名稱)) {
+            const kingdomDesc = (rawKingdom.描述 || '無').replace(/\n/g, '<br>');
+            divinityContainer.innerHTML += `<div class="card" style="border-color: var(--tier-color); background: rgba(255,255,255,0.1);"><div class="card-header"><h3 class="card-title" style="color: var(--tier-color); font-size: 1.2rem;">${
+              rawKingdom.名稱
+            }</h3></div><div class="card-body"><p>${kingdomDesc}</p></div></div>`;
+          }
+
+          if (rawElements.length > 0) {
+            divinityContainer.innerHTML += `<div class="subsection-title">要素</div>`;
+            renderCards(divinityContainer, rawElements, createGenericCard);
+          }
+          if (rawPowers.length > 0) {
+            divinityContainer.innerHTML += `<div class="subsection-title">權能</div>`;
+            renderCards(divinityContainer, rawPowers, createGenericCard);
+          }
+          if (rawLaws.length > 0) {
+            divinityContainer.innerHTML += `<div class="subsection-title">法則</div>`;
+            renderCards(divinityContainer, rawLaws, createLawCard);
+          }
+
+          const backContainer = document.querySelector('#tab-backstory');
+          if (data.背景故事 && data.背景故事.trim()) {
+            const backstory = data.背景故事.replace(/\n/g, '<br>');
+            backContainer.innerHTML = `<div class="story">${backstory}</div>`;
+          } else {
+            backContainer.innerHTML = '<div style="text-align:center;color:#666;padding:20px;">暫無故事</div>';
+          }
+
+          initializeTabs(data);
+
+          initCanvasAnimation(tier, tierHex);
+        }
+
+        function initializeTabs(data) {
+          const tabButtons = document.querySelectorAll('.tab-button');
+          const tabContents = document.querySelectorAll('.tab-content');
+          let firstVisibleTab = null;
+
+          const divData = data.登神長階 || {};
+          const hasElements = hasArrayContent(divData.要素) || hasArrayContent(data.要素);
+          const hasPowers = hasArrayContent(divData.權能) || hasArrayContent(data.權能);
+          const hasLaws = hasArrayContent(divData.法則) || hasArrayContent(data.法則);
+          const hasDeity = hasText(divData.神位) || hasText(data.神位);
+          const hasKingdom = (divData.神國 && hasText(divData.神國.名稱)) || (data.神國 && hasText(data.神國.名稱));
+
+          const hasDivinity = hasElements || hasPowers || hasLaws || hasDeity || hasKingdom;
+
+          tabButtons.forEach(button => {
+            const targetId = button.dataset.tabTarget.substring(1);
+            let hasContent = false;
+            if (targetId === 'tab-skills' && data.技能?.length > 0) hasContent = true;
+            else if (targetId === 'tab-equipment' && data.裝備?.length > 0) hasContent = true;
+            else if (
+              targetId === 'tab-inventory' &&
+              (hasArrayContent(data.道具) || hasArrayContent(data.特殊物品) || hasArrayContent(data.物品))
+            )
+              hasContent = true;
+            else if (targetId === 'tab-backstory' && data.背景故事) hasContent = true;
+            else if (targetId === 'tab-divinity' && hasDivinity) hasContent = true;
+            else if (targetId === 'tab-profile') hasContent = true;
+
+            if (!hasContent) button.style.display = 'none';
+            else if (!firstVisibleTab) firstVisibleTab = button;
+
+            button.addEventListener('click', () => {
+              tabButtons.forEach(btn => btn.classList.remove('active'));
+              tabContents.forEach(content => content.classList.remove('active'));
+              button.classList.add('active');
+              document.querySelector(button.dataset.tabTarget).classList.add('active');
+
+              const canvas = document.getElementById('particle-canvas');
+              const bgLayer = document.querySelector('.card-background-layer');
+              if (canvas && bgLayer) {
+                requestAnimationFrame(() => {
+                  canvas.width = bgLayer.offsetWidth;
+                  canvas.height = bgLayer.offsetHeight;
+                });
+              }
+            });
+          });
+          if (firstVisibleTab) firstVisibleTab.click();
+        }
+
+        function renderCards(container, items, cardCreator) {
+          if (!container || !items || !Array.isArray(items) || items.length === 0) return;
+          items.forEach(item => container.insertAdjacentHTML('beforeend', cardCreator(item)));
+        }
+
+        function createTags(tags) {
+          const safeTags = getSmartArray(tags)
+            .map(tag =>
+              String(tag ?? '')
+                .trim()
+                .replace(/。+$/g, '')
+                .trim(),
+            )
+            .filter(Boolean);
+          return safeTags.length > 0 ? safeTags.map(tag => `<span class="card-tag">${tag}</span>`).join('') : '';
+        }
+
+        function createSkillCard(item) {
+          const costStr = getSmartArray(item.消耗).join(' / ');
+          const effect = (item.效果 || '無').replace(/\n/g, '<br>');
+          return `<div class="card"><div class="card-header"><h3 class="card-title">${
+            item.名稱
+          }</h3><span class="card-subtitle">${
+            item.品質 || ''
+          }</span></div><div class="card-body"><div class="card-tags">${createTags(item.標籤)}</div>${
+            item.類型 ? `<p><span class="card-label">類型:</span> ${item.類型}</p>` : ''
+          }${
+            costStr ? `<p><span class="card-label">消耗:</span> ${costStr}</p>` : ''
+          }<p><span class="card-label">效果:</span> ${effect}</p>${
+            item.描述
+              ? `<p style="opacity:0.8;font-style:italic;font-size:0.9rem;margin-top:8px; border-top:1px solid rgba(255,255,255,0.15); padding-top:5px;">${item.描述}</p>`
+              : ''
+          }</div></div>`;
+        }
+
+        function createEquipmentCard(item) {
+          const effect = (item.效果 || '無').replace(/\n/g, '<br>');
+          return `<div class="card"><div class="card-header"><h3 class="card-title">${
+            item.名稱
+          }</h3><span class="card-subtitle">${
+            item.品質 || ''
+          }</span></div><div class="card-body"><div class="card-tags">${createTags(
+            item.標籤,
+          )}</div><p><span class="card-label">效果:</span> ${effect}</p>${
+            item.描述
+              ? `<p style="opacity:0.8;font-style:italic;font-size:0.9rem;margin-top:8px; border-top:1px solid rgba(255,255,255,0.15); padding-top:5px;">${item.描述}</p>`
+              : ''
+          }</div></div>`;
+        }
+        function createGenericCard(item) {
+          const content = (item.效果 || item.描述 || '無').replace(/\n/g, '<br>');
+          return `<div class="card" style="border-left-color: var(--tier-color);"><div class="card-header"><h3 class="card-title" style="color:var(--tier-color)">${
+            item.名稱
+          }</h3></div><div class="card-body"><p>${content}</p></div></div>`;
+        }
+        function createLawCard(item) {
+          const passive = (item.被動效果 || '無').replace(/\n/g, '<br>');
+          const active = (item.主動效果 || '無').replace(/\n/g, '<br>');
+          return `<div class="card" style="border-left-color: var(--tier-color);"><div class="card-header"><h3 class="card-title" style="color:var(--tier-color)">${
+            item.名稱
+          }</h3></div><div class="card-body"><p>${item.描述 || ''}</p>${
+            item.被動效果
+              ? `<p><span class="card-label" style="color:var(--tier-color)">被動:</span> ${passive}</p>`
+              : ''
+          }${
+            item.主動效果
+              ? `<p><span class="card-label" style="color:var(--tier-color)">主動:</span> ${active}</p>`
+              : ''
+          }</div></div>`;
+        }
+
+        function addImportButton(data, originalYaml) {
+          const wrapper = document.querySelector('.card-wrapper');
+          if (!wrapper || document.getElementById('import-action-btn')) return;
+
+          // 清理舊版本殘留（熱重載時可能同時存在）
+          const oldLore = document.getElementById('save-to-lorebook-btn');
+          if (oldLore) oldLore.remove();
+          const oldMvu = document.getElementById('save-to-mvu-btn');
+          if (oldMvu) oldMvu.remove();
+
+          const button = document.createElement('button');
+          button.id = 'import-action-btn';
+          button.textContent = '📥';
+          button.title = '導入';
+
+          const menu = document.createElement('div');
+          menu.id = 'import-action-menu';
+          menu.innerHTML = `
+                  <button type="button" data-action="mvu">導入到 MVU 變量</button>
+                  <button type="button" data-action="worldbook">導入到 聊天世界書</button>
+                `;
+
+          const closeMenu = () => menu.classList.remove('show');
+          const toggleMenu = () => menu.classList.toggle('show');
+
+          button.addEventListener('click', e => {
+            e.stopPropagation();
+            toggleMenu();
+          });
+
+          menu.addEventListener('click', async e => {
+            e.stopPropagation();
+            const target = e.target;
+            if (!(target instanceof HTMLElement)) return;
+            const action = target.getAttribute('data-action');
+            if (!action) return;
+
+            closeMenu();
+
+            if (action === 'mvu') {
+              await importToMvuVariables(data, button);
+            } else if (action === 'worldbook') {
+              await saveToChatWorldbook(data, originalYaml, button);
+            }
+          });
+
+          // Close on outside click / ESC
+          document.addEventListener('click', () => closeMenu());
+          document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeMenu();
+          });
+
+          wrapper.appendChild(menu);
+          wrapper.appendChild(button);
+        }
+
+        async function saveToChatWorldbook(data, originalYaml, button) {
+          const api = window.TavernHelper || window;
+          if (typeof api.getOrCreateChatWorldbook !== 'function' || typeof api.createWorldbookEntries !== 'function') {
+            alert('錯誤：未檢測到 Worldbook API。');
+            return;
+          }
+          try {
+            const oldText = button.textContent;
+            button.textContent = '⏳';
+
+            const characterName = data.姓名 || 'Unknown';
+            let shortName = characterName.split(/[·\s]/)[0];
+            const lorebookKey = shortName && shortName.trim().length > 0 ? shortName : characterName;
+
+            let bookName =
+              typeof api.getChatWorldbookName === 'function' ? await api.getChatWorldbookName('current') : null;
+            if (!bookName) {
+              const now = new Date();
+              const timeStr = `${now.getFullYear()}_${(now.getMonth() + 1).toString().padStart(2, '0')}_${now
+                .getDate()
+                .toString()
+                .padStart(2, '0')}_${now.getHours()}h_${now.getMinutes()}m_${now.getSeconds()}s`;
+              const desiredName = `命定之詩-charinfo-Chat_Book_${timeStr}`;
+              bookName = await api.getOrCreateChatWorldbook('current', desiredName);
+            }
+
+            const newEntry = {
+              name: characterName,
+              enabled: true,
+              strategy: { type: 'selective', keys: [lorebookKey] },
+              position: { type: 'after_character_definition', order: 152 },
+              content: originalYaml,
+            };
+            await api.createWorldbookEntries(bookName, [newEntry]);
+
+            button.textContent = '✅';
+            setTimeout(() => (button.textContent = oldText), 1000);
+          } catch (err) {
+            console.error('Worldbook Save Error:', err);
+            button.textContent = '❌';
+            alert('保存失敗: ' + err.message);
+            setTimeout(() => (button.textContent = '📥'), 1000);
+          }
+        }
+
+        async function importToMvuVariables(data, button) {
+          // Try to find the API in current window or parent
+          const api = window.TavernHelper || (window.parent && window.parent.TavernHelper) || window;
+
+          if (!api || typeof api.getVariables !== 'function' || typeof api.insertOrAssignVariables !== 'function') {
+            console.error('TavernHelper API not found', {
+              windowTavernHelper: window.TavernHelper,
+              parentTavernHelper: window.parent?.TavernHelper,
+            });
+            alert(
+              '錯誤：未檢測到 TavernHelper API (getVariables / insertOrAssignVariables)。\n請確保酒館助手插件已安裝並啟用。',
+            );
+            return;
+          }
+
+          if (
+            !confirm(
+              `確定要將角色 "${data.姓名 || 'Unknown'}" 導入到 MVU 變量系統(命定系統.關係列表)嗎？\n如果已存在同名角色，將會覆蓋其數據。`,
+            )
+          ) {
+            return;
+          }
+
+          try {
+            const oldText = button.textContent;
+            button.textContent = '⏳';
+
+            // Data Transformation Logic
+            const charName = data.姓名 || 'Unknown';
+
+            // Helper to ensure string
+            const ensureString = val => {
+              if (Array.isArray(val)) return val.join(', ');
+              return val ? String(val) : '';
+            };
+
+            // Helper to ensure array
+            const ensureArray = val => {
+              return getSmartArray(val);
+            };
+
+            // Helper to convert array of objects to object map keyed by name
+            // Strict type conversion added based on validation errors
+            const arrayToMap = (arr, type) => {
+              const map = {};
+
+              if (Array.isArray(arr)) {
+                arr.forEach(item => {
+                  if (item && item.名稱) {
+                    const { 名稱, ...rest } = item;
+                    const processed = { ...rest };
+
+                    // 強制類型轉換：標籤必須為數組
+                    if (processed.標籤) {
+                      processed.標籤 = ensureArray(processed.標籤);
+                    } else if (type === 'skill' || type === 'equip') {
+                      processed.標籤 = [];
+                    }
+
+                    // 強制類型轉換：效果必須為對象 (Record<string, string>)
+                    // 僅對技能和裝備執行此邏輯，法則/權能/要素可能使用不同的鍵名
+                    if (type !== 'divinity') {
+                      // 如果原數據是字符串，嘗試將其轉為 { 描述: "..." }
+                      if (typeof processed.效果 === 'string') {
+                        processed.效果 = { 描述: processed.效果 };
+                      } else if (!processed.效果) {
+                        processed.效果 = {};
+                      }
+                    }
+
+                    // 確保其他字段存在
+                    if (type === 'equip') {
+                      processed.品質 = processed.品質 || '未知';
+                      processed.類型 = processed.分類 || processed.類型 || '未知'; // 裝備常用"分類"
+                      processed.描述 = processed.描述 || '';
+                      processed.位置 = processed.位置 || '';
+                    } else if (type === 'skill') {
+                      processed.品質 = processed.品質 || '未知';
+                      processed.類型 = processed.類型 || '未知';
+                      processed.消耗 = processed.消耗 ? ensureString(processed.消耗) : '';
+                      processed.描述 = processed.描述 || '';
+                    }
+
+                    map[名稱] = processed;
+                  }
+                });
+              }
+              return map;
+            };
+
+            // Construct MVU Data
+            const mvuData = {
+              在場: true, // boolean
+              生命層級: data.生命層級 || '第一層級/普通層級',
+              等級: parseInt(data.等級) || 1,
+              種族: data.種族 || '未知',
+              身份: ensureArray(data.身份),
+              職業: ensureArray(data.職業),
+              性格: ensureString(data.性格).trim(),
+              喜愛: ensureString(data.喜愛).trim(),
+              外貌: ensureString(data.外貌特質).trim(), // Key changed to '外貌' per schema
+              著裝: ensureString(data.衣物裝飾).trim(), // Key changed to '著裝' per schema
+              屬性: {
+                力量: parseAttributeValue(data.屬性?.力量),
+                敏捷: parseAttributeValue(data.屬性?.敏捷),
+                體質: parseAttributeValue(data.屬性?.體質),
+                智力: parseAttributeValue(data.屬性?.智力),
+                精神: parseAttributeValue(data.屬性?.精神),
+              },
+              技能: arrayToMap(data.技能, 'skill'),
+              裝備: arrayToMap(data.裝備, 'equip'),
+              登神長階: {
+                是否開啟: !!(data.登神長階 || (data.生命層級 && data.生命層級.includes('神'))), // Force boolean
+                神位: data.登神長階?.神位 || data.神位 || '',
+                神國: {
+                  名稱: data.登神長階?.神國?.名稱 || data.神國?.名稱 || '',
+                  描述: data.登神長階?.神國?.描述 || data.神國?.描述 || '',
+                },
+                要素: arrayToMap(data.登神長階?.要素 || data.要素, 'divinity'),
+                權能: arrayToMap(data.登神長階?.權能 || data.權能, 'divinity'),
+                法則: arrayToMap(data.登神長階?.法則 || data.法則, 'divinity'),
+              },
+              // Default values for MVU specific fields
+              命定契約: false, // Key changed to '命定契約' per schema, boolean
+              好感度: 0,
+              心裡話: '',
+              背景故事: data.背景故事 || '',
+            };
+
+            // Detect variable path prefix
+            let prefix = 'stat_data.';
+            const targetScope = { type: 'message', message_id: 'latest' };
+            let currentVars = null;
+
+            try {
+              currentVars = await api.getVariables(targetScope);
+              if (currentVars && currentVars.命定系統) {
+                prefix = '';
+              } else if (currentVars && currentVars.stat_data) {
+                prefix = 'stat_data.';
+              }
+              console.log('Detected variable path prefix:', prefix, 'in scope:', targetScope);
+            } catch (e) {
+              console.warn('Failed to detect variable path, defaulting to stat_data.', e);
+            }
+
+            const keepIfPresent = val => (val === undefined || val === null ? undefined : val);
+
+            const candidates = [];
+            if (prefix === 'stat_data.') {
+              candidates.push(currentVars?.stat_data?.命定系統?.關係列表?.[charName]);
+              candidates.push(currentVars?.stat_data?.[charName]); // fallback: plain key
+              candidates.push(currentVars?.stat_data?.ThatNPC); // fallback: literal ThatNPC
+            } else {
+              candidates.push(currentVars?.命定系統?.關係列表?.[charName]);
+            }
+
+            let preservedFavor;
+            let preservedHeart;
+            for (const entry of candidates) {
+              if (!entry) continue;
+              if (preservedFavor === undefined) preservedFavor = keepIfPresent(entry?.好感度);
+              if (preservedHeart === undefined) preservedHeart = keepIfPresent(entry?.心裡話);
+            }
+
+            if (preservedFavor !== undefined) mvuData.好感度 = preservedFavor;
+            if (preservedHeart !== undefined) mvuData.心裡話 = preservedHeart;
+
+            const updatePayload = {};
+
+            if (prefix === 'stat_data.') {
+              updatePayload['stat_data'] = {
+                命定系統: {
+                  關係列表: {
+                    [charName]: mvuData,
+                  },
+                },
+              };
+            } else {
+              updatePayload['命定系統'] = {
+                關係列表: {
+                  [charName]: mvuData,
+                },
+              };
+            }
+
+            console.log('Attempting to insert MVU data:', updatePayload);
+
+            await api.insertOrAssignVariables(updatePayload, targetScope);
+
+            button.textContent = '✅';
+            setTimeout(() => (button.textContent = oldText), 2000);
+            console.log('MVU Import Success:', charName, mvuData);
+          } catch (err) {
+            console.error('MVU Import Error:', err);
+            button.textContent = '❌';
+            alert('導入失敗: ' + err.message);
+            setTimeout(() => (button.textContent = '📥'), 2000);
+          }
+        }
+
+        function initCanvasAnimation(tier, colorHex) {
+          const canvas = document.getElementById('particle-canvas');
+          const bgLayer = document.querySelector('.card-background-layer');
+          if (!canvas || !bgLayer) return;
+
+          const ctx = canvas.getContext('2d');
+          let mode = 0;
+          const t = parseInt(tier);
+
+          if (t === 3 || t === 4)
+            mode = 1; // Arcane Dust
+          else if (t === 5)
+            mode = 2; // Divine Spores
+          else if (t === 6)
+            mode = 3; // Legendary Embers
+          else if (t >= 7) mode = 4; // Transcendent Orbs
+
+          if (mode === 0) {
+            mode = 1;
+          }
+
+          let particles = [];
+          // OPTIMIZATION: Reduced particle count for mobile to save battery/CPU
+          // Previous: <600 ? 25 : 40. New: <600 ? 15 : 30.
+          const baseParticleCount = window.innerWidth < 600 ? 15 : 30;
+          const PARTICLE_COUNT = t <= 2 ? Math.max(8, Math.floor(baseParticleCount * 0.55)) : baseParticleCount;
+          let r = 255,
+            g = 255,
+            b = 255;
+
+          const hexColor = (colorHex || '#ffffff').replace(/^#/, '');
+          if (hexColor.length === 6) {
+            r = parseInt(hexColor.substring(0, 2), 16);
+            g = parseInt(hexColor.substring(2, 4), 16);
+            b = parseInt(hexColor.substring(4, 6), 16);
+          }
+
+          const observer = new ResizeObserver(() => {
+            canvas.width = bgLayer.offsetWidth;
+            canvas.height = bgLayer.offsetHeight;
+          });
+          observer.observe(bgLayer);
+          canvas.width = bgLayer.offsetWidth;
+          canvas.height = bgLayer.offsetHeight;
+
+          // Smart Sleep Mechanism (IntersectionObserver)
+          // Only animate when visible in viewport. This is standard browser optimization logic.
+          // It stops the "infinite loop" when you scroll away, saving CPU and Battery.
+          let isVisible = true;
+          const visibilityObserver = new IntersectionObserver(
+            entries => {
+              entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                  if (!isVisible) {
+                    isVisible = true;
+                    animate(); // Restart loop
+                  }
+                } else {
+                  isVisible = false; // Stop loop
+                }
+              });
+            },
+            { rootMargin: '50px' },
+          ); // Small buffer to ensure smooth entry
+          visibilityObserver.observe(bgLayer);
+
+          class Particle {
+            constructor() {
+              this.reset(true);
+            }
+            reset(initial = false) {
+              this.x = Math.random() * canvas.width;
+              this.opacity = Math.random() * 0.4 + 0.1; // Lower opacity for gentler feel
+              if (isIOSSafari) {
+                this.opacity = Math.min(0.9, this.opacity + 0.18);
+              }
+
+              if (mode === 1) {
+                // REBUILT: Soft Arcane Dust
+                this.y = initial ? Math.random() * canvas.height : canvas.height + 20;
+                this.size = Math.random() * 4 + 2; // Slightly larger to compensate for lack of shadowBlur
+                this.speedY = Math.random() * 0.4 + 0.1; // Very slow upward float
+                this.sway = Math.random() * 0.2; // Gentle sway
+              } else if (mode === 2) {
+                this.y = initial ? Math.random() * canvas.height : -10;
+                this.size = Math.random() * 5 + 3;
+                this.speedY = Math.random() * 1 + 0.5;
+                this.sway = Math.random() * 0.5;
+              } else if (mode === 3) {
+                this.y = initial ? Math.random() * canvas.height : canvas.height + 20;
+                this.size = Math.random() * 4 + 2;
+                this.speedY = Math.random() * 0.8 + 0.2;
+                this.sway = Math.random() * 0.1;
+              } else if (mode === 4) {
+                this.y = initial ? Math.random() * canvas.height : canvas.height + 20;
+                this.size = Math.random() * 8 + 4;
+                this.speedY = Math.random() * 1 + 0.5;
+                this.sway = Math.random() * 0.2;
+              }
+            }
+            update() {
+              if (mode === 2) {
+                // Falling
+                this.y += this.speedY;
+                this.x += Math.sin(this.y * 0.02) * this.sway;
+                if (this.y > canvas.height) this.reset(false);
+              } else {
+                // Rising
+                this.y -= this.speedY;
+                this.x += Math.sin(this.y * 0.01) * (this.sway || 0.2);
+                if (this.y < -50) this.reset(false);
+              }
+            }
+            draw() {
+              // OPTIMIZATION: Replaced shadowBlur with RadialGradient
+              // shadowBlur is extremely expensive on mobile (CPU bound).
+              // RadialGradient is hardware accelerated and looks 95% similar.
+
+              const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size);
+
+              if (mode === 4 || mode === 1) {
+                // Soft glow for Arcane/Transcendent
+                gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${this.opacity})`);
+                gradient.addColorStop(0.4, `rgba(${r}, ${g}, ${b}, ${this.opacity * 0.5})`);
+                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+              } else {
+                // Sharper for others, but still soft edge
+                gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${this.opacity})`);
+                gradient.addColorStop(0.7, `rgba(${r}, ${g}, ${b}, ${this.opacity * 0.5})`);
+                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+              }
+
+              ctx.fillStyle = gradient;
+              ctx.beginPath();
+              // Draw a slightly larger circle to contain the gradient fade out
+              ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+          for (let i = 0; i < PARTICLE_COUNT; i++) particles.push(new Particle());
+          function animate() {
+            if (!isVisible) return; // Stop if not visible
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+              p.update();
+              p.draw();
+            });
+            requestAnimationFrame(animate);
+          }
+          animate();
+        }
+
+        const yamlDataSource = document.getElementById('data-source');
+        if (yamlDataSource) {
+          const yamlData = yamlDataSource.textContent;
+          if (yamlData && yamlData.trim() !== '') {
+            const result = parseRobust(yamlData);
+            if (result.success) {
+              renderSheet(result.data, yamlData);
+            } else {
+              document.body.innerHTML = `
+                      <div style="color: #ff6b6b; padding: 20px; text-align: center; background: rgba(0,0,0,0.8); border-radius: 8px; margin: 20px;">
+                        <h3 style="margin-top:0;">⚠️ YAML 解析失敗</h3>
+                        <p style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 10px;">LLM 生成的數據格式似乎有誤。</p>
+                        <div style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; text-align: left; font-family: monospace; font-size: 0.85rem; overflow-x: auto; border: 1px solid #d63031;">
+                          ${result.error}
+                        </div>
+                        <p style="font-size: 0.8rem; color: #aaa; margin-top: 10px;">建議檢查：縮進是否對齊、是否包含非法字符。</p>
+                      </div>`;
+            }
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
