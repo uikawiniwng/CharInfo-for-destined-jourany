@@ -1,0 +1,1646 @@
+```
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>NPC 查看器SP</title>
+    <style>
+      /* Scoped Root - All styles contained within this container */
+      #char-showcase-root {
+        --c-hp: #ff4d4d;
+        --c-en: #3399ff;
+        --c-sp: #f39c12;
+        --c-gold: #e6b800;
+        --c-bg-dark: #0a0a0c;
+        --c-panel: rgba(15, 15, 20, 0.95);
+        --c-text: #f0f0f0;
+        --c-text-muted: #888;
+
+        /* Rarity Colors */
+        --c-legend: #ffca28;
+        --c-epic: #d633ff;
+        --c-rare: #3399ff;
+        --c-power: #ff4d4d;
+        --c-mythic: #ffd700;
+        --c-divine: #00ffff;
+        --c-uncommon: #50c878;
+
+        --f-serif: Georgia, 'Times New Roman', serif;
+        --f-sans: system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+        --f-mono: 'Courier New', monospace;
+
+        --nav-height: 60px;
+
+        /* Layout Reset */
+        box-sizing: border-box;
+        font-family: var(--f-sans);
+        color: var(--c-text);
+
+        /* Custom Scrollbar */
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+
+        /* Container Dimensions - aspect-ratio 控制高度，适配 iframe 宿主 */
+        position: relative;
+        width: 100%;
+        max-width: 600px;
+        aspect-ratio: 3 / 4;
+        margin: 0 auto;
+        background: var(--c-bg-dark);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      }
+
+      #char-showcase-root * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* Webkit Scrollbar */
+      #char-showcase-root ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+      }
+      #char-showcase-root ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #char-showcase-root ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 2px;
+      }
+      #char-showcase-root ::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.4);
+      }
+
+      /* === BACKGROUND === */
+      #char-showcase-root .bg-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        transition: opacity 0.4s ease;
+        border-radius: 8px;
+      }
+
+      #char-showcase-root #bg-base {
+        background: radial-gradient(circle at 50% 30%, #1f222e 0%, #0a0a0c 70%);
+        background-image:
+          radial-gradient(circle at 50% 30%, #1f222e 0%, #0a0a0c 70%),
+          repeating-linear-gradient(
+            45deg,
+            rgba(255, 255, 255, 0.02) 0px,
+            rgba(255, 255, 255, 0.02) 1px,
+            transparent 1px,
+            transparent 10px
+          );
+        z-index: 1;
+      }
+
+      #char-showcase-root #bg-char {
+        background-size: cover;
+        background-position: center top;
+        z-index: 2;
+        mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+      }
+
+      #char-showcase-root.mode-details #bg-char {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* === CONTENT === */
+      #char-showcase-root #content-area {
+        position: relative;
+        flex: 1;
+        z-index: 10;
+        overflow: hidden;
+      }
+
+      #char-showcase-root .page {
+        display: none;
+        width: 100%;
+        height: 100%;
+        overflow-y: auto;
+        padding: 20px;
+        padding-bottom: 20px;
+      }
+
+      #char-showcase-root .page.active {
+        display: block;
+      }
+
+      /* Detail pages backdrop - 非首页页面添加半透明深色背景以提高可读性 */
+      #char-showcase-root #page-status,
+      #char-showcase-root #page-skill,
+      #char-showcase-root #page-equip,
+      #char-showcase-root #page-ascension,
+      #char-showcase-root #page-story {
+        background: rgba(10, 10, 12, 0.88);
+      }
+
+      /* === HOME === */
+      #char-showcase-root #page-home.active {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        padding-bottom: 0;
+      }
+
+      #char-showcase-root .hud-container {
+        padding: 15px 20px 20px;
+        background: linear-gradient(to top, rgba(10, 10, 12, 0.95) 0%, rgba(10, 10, 12, 0.7) 50%, transparent 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      #char-showcase-root .char-header {
+        text-align: center;
+        margin-bottom: 10px;
+      }
+      #char-showcase-root .char-name {
+        font-family: var(--f-serif);
+        font-size: 2.8rem;
+        color: #fff;
+        margin: 0;
+        text-shadow: 0 4px 15px rgba(0, 0, 0, 1);
+        letter-spacing: 2px;
+        line-height: 1.2;
+      }
+      #char-showcase-root .char-info {
+        color: var(--c-gold);
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        font-weight: bold;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+      }
+
+      #char-showcase-root .quotes-area {
+        width: 100%;
+        max-width: 400px;
+        min-height: 40px;
+        border: 1px dashed rgba(255, 215, 64, 0.3);
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        color: #666;
+        font-style: italic;
+        margin-bottom: 15px;
+        backdrop-filter: blur(5px);
+        padding: 8px 10px;
+        font-size: 0.85rem;
+        text-align: center;
+      }
+
+      /* === STATUS PAGE === */
+      #char-showcase-root .status-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        align-items: center;
+      }
+
+      /* Radar */
+      #char-showcase-root .radar-wrapper {
+        position: relative;
+        width: 220px;
+        height: 220px;
+        margin: 10px 0;
+      }
+      #char-showcase-root .radar-grid {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.1);
+      }
+      #char-showcase-root .radar-axis {
+        stroke: rgba(255, 255, 255, 0.1);
+      }
+      #char-showcase-root .radar-shape {
+        fill: rgba(255, 215, 64, 0.2);
+        stroke: var(--c-gold);
+        stroke-width: 2;
+      }
+
+      #char-showcase-root .attr-flag {
+        position: absolute;
+        background: rgba(20, 20, 20, 0.9);
+        border: 1px solid var(--c-gold);
+        color: #fff;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+        border-radius: 4px;
+        cursor: pointer;
+        z-index: 20;
+        white-space: nowrap;
+        transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+        max-width: 80px;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #char-showcase-root .attr-flag.active {
+        background: var(--c-gold);
+        color: #000;
+        box-shadow: 0 0 10px var(--c-gold);
+        z-index: 100;
+      }
+
+      #char-showcase-root .attr-detail-box {
+        margin-top: -10px;
+        margin-bottom: 10px;
+        min-height: 24px;
+        text-align: center;
+        color: var(--c-gold);
+        font-family: var(--f-mono);
+        font-size: 0.9rem;
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 215, 64, 0.2);
+        padding: 8px;
+        border-radius: 4px;
+        width: 90%;
+        opacity: 0;
+        transition: opacity 0.2s;
+        pointer-events: none;
+      }
+      #char-showcase-root .attr-detail-box.visible {
+        opacity: 1;
+      }
+
+      #char-showcase-root .flag-str {
+        top: -10px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      #char-showcase-root .flag-agi {
+        top: 60px;
+        right: -15px;
+      }
+      #char-showcase-root .flag-spr {
+        top: 60px;
+        left: -15px;
+      }
+      #char-showcase-root .flag-con {
+        bottom: 30px;
+        right: 0;
+      }
+      #char-showcase-root .flag-int {
+        bottom: 30px;
+        left: 0;
+      }
+
+      /* Resources */
+      #char-showcase-root .res-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        width: 100%;
+      }
+      #char-showcase-root .res-card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 6px;
+        padding: 15px;
+        position: relative;
+        overflow: hidden;
+      }
+      #char-showcase-root .res-card::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+      }
+      #char-showcase-root .res-card.hp::before {
+        background: var(--c-hp);
+        box-shadow: 0 0 10px var(--c-hp);
+      }
+      #char-showcase-root .res-card.en::before {
+        background: var(--c-en);
+        box-shadow: 0 0 10px var(--c-en);
+      }
+      #char-showcase-root .res-card.sp-card::before {
+        background: var(--c-sp);
+        box-shadow: 0 0 10px var(--c-sp);
+      }
+      #char-showcase-root .res-label {
+        font-size: 0.8rem;
+        color: #aaa;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      #char-showcase-root .res-val {
+        font-family: var(--f-mono);
+        font-size: 1.4rem;
+        color: #fff;
+        font-weight: bold;
+        margin-top: 5px;
+      }
+
+      /* Meta Block */
+      #char-showcase-root .meta-block {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 20px;
+      }
+      #char-showcase-root .meta-line {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+        font-size: 0.95rem;
+      }
+      #char-showcase-root .meta-line:last-child {
+        border-bottom: none;
+      }
+      #char-showcase-root .meta-label {
+        color: var(--c-gold);
+      }
+      #char-showcase-root .meta-data {
+        color: #eee;
+        text-align: right;
+        max-width: 60%;
+        word-break: break-word;
+      }
+
+      /* === CARDS === */
+      #char-showcase-root .card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-left: 2px solid #555;
+        padding: 16px;
+        margin-bottom: 15px;
+        border-radius: 4px;
+      }
+      #char-showcase-root .card.legend {
+        border-left-color: var(--c-legend);
+        background: linear-gradient(90deg, rgba(255, 202, 40, 0.05), transparent);
+      }
+      #char-showcase-root .card.epic {
+        border-left-color: var(--c-epic);
+      }
+      #char-showcase-root .card.rare {
+        border-left-color: var(--c-rare);
+      }
+      #char-showcase-root .card.power {
+        border-left-color: var(--c-power);
+      }
+      #char-showcase-root .card.mythic {
+        border-left-color: var(--c-mythic);
+        background: linear-gradient(90deg, rgba(255, 215, 0, 0.05), transparent);
+      }
+      #char-showcase-root .card.divine {
+        border-left-color: var(--c-divine);
+      }
+      #char-showcase-root .card.uncommon {
+        border-left-color: var(--c-uncommon);
+      }
+
+      #char-showcase-root .card-header {
+        margin-bottom: 10px;
+      }
+      #char-showcase-root .card-title {
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: #fff;
+      }
+      #char-showcase-root .prefix {
+        margin-right: 5px;
+        font-weight: bold;
+      }
+      #char-showcase-root .prefix.legend {
+        color: var(--c-legend);
+      }
+      #char-showcase-root .prefix.epic {
+        color: var(--c-epic);
+      }
+      #char-showcase-root .prefix.rare {
+        color: var(--c-rare);
+      }
+      #char-showcase-root .prefix.power {
+        color: var(--c-power);
+      }
+      #char-showcase-root .prefix.mythic {
+        color: var(--c-mythic);
+      }
+      #char-showcase-root .prefix.divine {
+        color: var(--c-divine);
+      }
+      #char-showcase-root .prefix.uncommon {
+        color: var(--c-uncommon);
+      }
+
+      #char-showcase-root .card-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-bottom: 10px;
+      }
+      #char-showcase-root .tag {
+        font-size: 0.75rem;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 2px 6px;
+        border-radius: 4px;
+        color: #bbb;
+      }
+      #char-showcase-root .tag.cost {
+        color: #ff8a80;
+        border-color: #ff8a80;
+      }
+
+      #char-showcase-root .card-body {
+        font-size: 0.9rem;
+        line-height: 1.6;
+        color: #ddd;
+        margin-bottom: 8px;
+      }
+      #char-showcase-root .card-flavor {
+        font-size: 0.8rem;
+        font-style: italic;
+        color: #777;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        padding-top: 8px;
+      }
+
+      #char-showcase-root .section-title {
+        color: var(--c-gold);
+        font-family: var(--f-serif);
+        font-size: 1.6rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+        margin-top: 0;
+      }
+
+      #char-showcase-root .sub-section-title {
+        color: var(--c-gold);
+        font-family: var(--f-serif);
+        font-size: 1.2rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 10px;
+        margin-top: 25px;
+        margin-bottom: 15px;
+      }
+
+      /* Story/Profile */
+      #char-showcase-root .profile-content {
+        line-height: 1.6;
+        color: #ccc;
+      }
+      #char-showcase-root .profile-content strong {
+        color: var(--c-gold);
+        display: block;
+        margin-top: 15px;
+        margin-bottom: 5px;
+      }
+      #char-showcase-root .profile-content p {
+        margin: 0 0 18px 0;
+        line-height: 1.8;
+        text-align: left;
+        word-break: break-word;
+      }
+
+      /* Divinity Title */
+      #char-showcase-root .divinity-deity {
+        text-align: center;
+        font-family: var(--f-serif);
+        font-size: 1.6rem;
+        color: var(--c-gold);
+        text-shadow: 0 0 10px rgba(230, 184, 0, 0.5);
+        margin-bottom: 15px;
+      }
+
+      /* === NAV === */
+      #char-showcase-root #bottom-nav {
+        height: var(--nav-height);
+        flex-shrink: 0;
+        background: #0f0f12;
+        border-top: 1px solid #222;
+        display: flex;
+        z-index: 50;
+      }
+      #char-showcase-root .nav-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #555;
+        cursor: pointer;
+        font-size: 0.7rem;
+        gap: 4px;
+        transition: all 0.2s;
+        background: none;
+        border: none;
+        padding: 0;
+      }
+      #char-showcase-root .nav-icon {
+        width: 18px;
+        height: 18px;
+        background: currentColor;
+        mask-size: contain;
+        -webkit-mask-size: contain;
+        mask-repeat: no-repeat;
+        -webkit-mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-position: center;
+      }
+      #char-showcase-root .nav-item.active {
+        color: var(--c-gold);
+        background: rgba(255, 255, 255, 0.02);
+      }
+      #char-showcase-root .nav-item.active .nav-icon {
+        filter: drop-shadow(0 0 8px var(--c-gold));
+      }
+
+      /* Icons */
+      #char-showcase-root .icon-home {
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z'/%3E%3C/svg%3E");
+      }
+      #char-showcase-root .icon-stat {
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z'/%3E%3C/svg%3E");
+      }
+      #char-showcase-root .icon-sword {
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M14.5 17.06c2.47-.36 4.67-1.92 5.76-4.06-1.09-2.14-3.29-3.7-5.76-4.06V7.24c3.42.45 6.35 2.72 7.5 5.76-1.15 3.04-4.08 5.31-7.5 5.76v-1.7zm-5-8.12c-2.47.36-4.67 1.92-5.76 4.06 1.09 2.14 3.29 3.7 5.76 4.06v1.7c-3.42-.45-6.35-2.72-7.5-5.76 1.15-3.04 4.08-5.31 7.5-5.76v1.7z'/%3E%3C/svg%3E");
+      }
+      #char-showcase-root .icon-bag {
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M18 6h-2c0-2.21-1.79-4-4-4S8 3.79 8 6H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6-2c1.1 0 2 .9 2 2h-4c0-1.1.9-2 2-2zm6 16H6V8h12v12z'/%3E%3C/svg%3E");
+      }
+      #char-showcase-root .icon-star {
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z'/%3E%3C/svg%3E");
+      }
+      #char-showcase-root .icon-book {
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z'/%3E%3C/svg%3E");
+      }
+
+      /* Action buttons (Lorebook/MVU) */
+      #char-showcase-root .action-buttons {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        display: none;
+        gap: 6px;
+        z-index: 60;
+      }
+      #char-showcase-root .action-btn {
+        background: rgba(20, 20, 20, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #fff;
+        padding: 6px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: all 0.2s;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+      }
+      #char-showcase-root .action-btn:hover {
+        background: rgba(60, 60, 60, 0.9);
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+        border-color: #fff;
+      }
+
+      /* === MOBILE RESPONSIVE === */
+      @media (max-width: 480px) {
+        #char-showcase-root {
+          aspect-ratio: 3 / 4.5;
+        }
+
+        #char-showcase-root .hud-container {
+          padding: 10px 15px 12px;
+        }
+
+        #char-showcase-root .char-name {
+          font-size: 1.8rem;
+          letter-spacing: 1px;
+        }
+
+        #char-showcase-root .char-info {
+          font-size: 0.75rem;
+          letter-spacing: 1px;
+        }
+
+        #char-showcase-root .char-header {
+          margin-bottom: 6px;
+        }
+
+        #char-showcase-root .quotes-area {
+          min-height: 28px;
+          padding: 5px 8px;
+          font-size: 0.75rem;
+          margin-bottom: 8px;
+          max-width: 300px;
+        }
+
+        #char-showcase-root .nav-item {
+          font-size: 0.6rem;
+        }
+
+        #char-showcase-root .nav-icon {
+          width: 16px;
+          height: 16px;
+        }
+
+        #char-showcase-root #bottom-nav {
+          height: 50px;
+        }
+
+        #char-showcase-root {
+          --nav-height: 50px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Scoped Root Container -->
+    <div id="char-showcase-root">
+      <div id="bg-base" class="bg-layer"></div>
+      <div id="bg-char" class="bg-layer"></div>
+
+      <!-- Action Buttons -->
+      <div class="action-buttons" id="action-buttons"></div>
+
+      <div id="content-area">
+        <!-- HOME -->
+        <div id="page-home" class="page active">
+          <div class="hud-container">
+            <div class="char-header">
+              <h1 class="char-name" data-name>加载中...</h1>
+              <span class="char-info" data-info></span>
+            </div>
+            <div class="quotes-area" data-quotes>等待数据注入...</div>
+          </div>
+        </div>
+
+        <!-- STATUS -->
+        <div id="page-status" class="page">
+          <h2 class="section-title">状态概览</h2>
+          <div class="status-layout">
+            <!-- Radar -->
+            <div class="radar-wrapper">
+              <svg width="220" height="220" viewBox="-30 -30 260 260" style="overflow: visible">
+                <g transform="translate(100, 100)">
+                  <polygon points="0,-80 76,-24 47,64 -47,64 -76,-24" class="radar-grid" />
+                  <polygon points="0,-64 61,-19 38,51 -38,51 -61,-19" class="radar-grid" />
+                  <polygon points="0,-48 46,-14 28,38 -28,38 -46,-14" class="radar-grid" />
+                  <polygon points="0,-32 30,-10 19,26 -19,26 -30,-10" class="radar-grid" />
+                  <line x1="0" y1="0" x2="0" y2="-80" class="radar-axis" />
+                  <line x1="0" y1="0" x2="76" y2="-24" class="radar-axis" />
+                  <line x1="0" y1="0" x2="47" y2="64" class="radar-axis" />
+                  <line x1="0" y1="0" x2="-47" y2="64" class="radar-axis" />
+                  <line x1="0" y1="0" x2="-76" y2="-24" class="radar-axis" />
+                  <polygon id="radar-poly" points="" class="radar-shape" />
+                </g>
+              </svg>
+              <div class="attr-flag flag-str" data-attr-flag="str">STR -</div>
+              <div class="attr-flag flag-agi" data-attr-flag="agi">AGI -</div>
+              <div class="attr-flag flag-con" data-attr-flag="con">CON -</div>
+              <div class="attr-flag flag-int" data-attr-flag="int">INT -</div>
+              <div class="attr-flag flag-spr" data-attr-flag="spr">SPR -</div>
+            </div>
+
+            <!-- Detail Box -->
+            <div id="attr-detail-box" class="attr-detail-box">点击属性查看公式</div>
+
+            <!-- Meta -->
+            <div class="meta-block" id="meta-block"></div>
+          </div>
+        </div>
+
+        <!-- SKILLS -->
+        <div id="page-skill" class="page">
+          <h2 class="section-title">技能列表</h2>
+          <div id="skills-container"></div>
+        </div>
+
+        <!-- EQUIP -->
+        <div id="page-equip" class="page">
+          <h2 class="section-title">装备道具</h2>
+          <div id="equip-container"></div>
+        </div>
+
+        <!-- ASCENSION -->
+        <div id="page-ascension" class="page">
+          <h2 class="section-title">登神长阶</h2>
+          <div id="divinity-container"></div>
+        </div>
+
+        <!-- STORY -->
+        <div id="page-story" class="page">
+          <h2 class="section-title">档案资料</h2>
+          <div id="story-container" class="profile-content"></div>
+        </div>
+      </div>
+
+      <!-- NAV -->
+      <nav id="bottom-nav">
+        <button class="nav-item active" data-nav="home">
+          <div class="nav-icon icon-home"></div>
+          <span>首页</span>
+        </button>
+        <button class="nav-item" data-nav="status">
+          <div class="nav-icon icon-stat"></div>
+          <span>状态</span>
+        </button>
+        <button class="nav-item" data-nav="skill">
+          <div class="nav-icon icon-sword"></div>
+          <span>技能</span>
+        </button>
+        <button class="nav-item" data-nav="equip">
+          <div class="nav-icon icon-bag"></div>
+          <span>装备</span>
+        </button>
+        <button class="nav-item" data-nav="ascension" id="nav-ascension" style="display: none">
+          <div class="nav-icon icon-star"></div>
+          <span>登神</span>
+        </button>
+        <button class="nav-item" data-nav="story">
+          <div class="nav-icon icon-book"></div>
+          <span>档案</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- YAML 数据源 (由外部系统注入) -->
+    <script id="data-source" type="text/yaml">
+      $1
+    </script>
+    <!-- js-yaml 4.1.0 via CDN (内联版本含控制字符在 srcdoc 中会被破坏) -->
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+
+    <script>
+      (function () {
+        // 全局错误处理 - 防止无声失败
+        window.onerror = function (msg, url, line, col, err) {
+          console.error('[NPC Viewer Error]', msg, 'at line', line);
+          var root = document.getElementById('char-showcase-root');
+          if (root) {
+            var nameEl = root.querySelector('[data-name]');
+            if (nameEl && nameEl.textContent === '加载中...') {
+              nameEl.textContent = '加载错误';
+              nameEl.style.color = '#ff6b6b';
+            }
+          }
+        };
+
+        const ROOT = document.getElementById('char-showcase-root');
+        if (!ROOT) return;
+
+        // ============================================================
+        // 特殊 NPC 背景图映射表
+        // ============================================================
+        const npcBackgroundMap = {
+          幽露: 'https://files.catbox.moe/ba1eoi.png',
+          仲夏夜之梦: 'https://files.catbox.moe/x3oecs.png',
+          NPC03: 'NPC03.png',
+        };
+
+        // ============================================================
+        // 颜色映射 (来自 2.3.html)
+        // ============================================================
+        const raceColorMap = {
+          神祗: '#FFFFFF',
+          龙族: '#FFD700',
+          龙姬: '#FFD700',
+          龙裔: '#FFA500',
+          巨龙: '#FFD700',
+          古龙: '#FFD700',
+          亚龙: '#FFAE42',
+          血姬: '#FF0000',
+          血族: '#DC143C',
+          亡灵种族: '#32CD32',
+          不死生物: '#32CD32',
+          翼民: '#00BFFF',
+          翼族: '#00BFFF',
+          堕羽民: '#9370DB',
+          女妖: '#FF1493',
+          人类: '#FFDAB9',
+          矮人: '#D2691E',
+          半身人: '#FFD700',
+          精灵: '#00FF7F',
+          光翅妖精: '#FFFF00',
+          汐海妖精: '#00FFFF',
+          妖精: '#FF00FF',
+          宁芙: '#FF00FF',
+          兽族: '#FF4500',
+          黑角民: '#00CED1',
+          蛇女: '#00FF7F',
+          半人马: '#FF8C00',
+          人鱼: '#00FFFF',
+          地精: '#32CD32',
+          魔物: '#8A2BE2',
+          深渊魔族: '#9400D3',
+          异域生物: '#FF00FF',
+          巨人: '#D2691E',
+          半巨人: '#D2691E',
+          小巨人: '#D2691E',
+          霜巨人: '#00BFFF',
+          泰坦人族: '#FFD700',
+          山妖: '#DAA520',
+          食人魔: '#7CFC00',
+          巨魔: '#7CFC00',
+          雪怪: '#E0FFFF',
+          诗灵: '#EE82EE',
+          英灵: '#00BFFF',
+          从者: '#00BFFF',
+          构装体: '#00CED1',
+          人造生物: '#00FF7F',
+          元素生物: '#FF0000',
+          植物生物: '#00FF00',
+          不定形生物: '#7CFC00',
+          其他: '#E0E0E0',
+        };
+
+        const tierColorMap = {
+          1: '#57595D',
+          2: '#50C878',
+          3: '#2196F3',
+          4: '#9932CC',
+          5: '#FFD700',
+          6: '#DC143C',
+          7: '#00FFFF',
+        };
+
+        const qualityClassMap = {
+          传说: 'legend',
+          史诗: 'epic',
+          稀有: 'rare',
+          精良: 'uncommon',
+          神话: 'mythic',
+          超凡: 'divine',
+          普通: '',
+          未知: '',
+        };
+
+        const attributeLabelMap = { 力量: 'STR', 敏捷: 'AGI', 体质: 'CON', 智力: 'INT', 精神: 'SPR' };
+
+        // ============================================================
+        // 工具函数 (来自 2.3.html)
+        // ============================================================
+        function hexToRgb(hex) {
+          if (!hex || typeof hex !== 'string') return '128, 128, 128';
+          hex = hex.replace(/^#/, '');
+          if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+          return `${parseInt(hex.substring(0, 2), 16)}, ${parseInt(hex.substring(2, 4), 16)}, ${parseInt(hex.substring(4, 6), 16)}`;
+        }
+
+        function getSmartArray(input) {
+          if (input === undefined || input === null) return [];
+          if (Array.isArray(input)) return input;
+          const str = String(input).trim();
+          if (!str || str.toLowerCase() === 'null' || str.toLowerCase() === 'none') return [];
+          let processed = str.replace(/\]\s*\[/g, '], [').replace(/^[\s\["']+|[\s\]"']+$/g, '');
+          return processed
+            .split(/[,;|，；、]/)
+            .map(s => s.trim().replace(/^['"\[\(]+|['"\]\)]+$/g, ''))
+            .filter(s => s && s !== 'null');
+        }
+
+        function hasText(val) {
+          if (!val) return false;
+          const s = String(val).trim().toLowerCase();
+          return s !== '' && s !== 'null' && s !== 'none' && s !== '[]';
+        }
+
+        function hasArrayContent(arr) {
+          return arr && Array.isArray(arr) && arr.length > 0;
+        }
+
+        function parseAttributeValue(val) {
+          if (val === undefined || val === null) return 0;
+          const str = String(val).trim();
+          if (str.includes('=')) {
+            const parts = str.split('=');
+            return parseInt(parts[parts.length - 1].trim()) || 0;
+          }
+          return parseInt(str) || 0;
+        }
+
+        function getAttributeFormula(val) {
+          if (val === undefined || val === null) return '';
+          return String(val).trim();
+        }
+
+        function formatNumber(num) {
+          if (num === undefined || num === null || num === 0) return '0';
+          const n = Number(num);
+          if (n >= 100000) return (n / 1000).toFixed(0) + 'k';
+          return n.toLocaleString();
+        }
+
+        // ============================================================
+        // YAML 清洗与解析 (来自 2.3.html)
+        // ============================================================
+        function cleanYaml(yamlStr) {
+          if (!yamlStr) return '';
+          yamlStr = yamlStr
+            .replace(/\u00A0/g, ' ')
+            .replace(/\t/g, '  ')
+            .replace(/：/g, ': ')
+            .replace(/，/g, ',')
+            .replace(/；/g, ';')
+            .replace(/】/g, ']')
+            .replace(/【/g, '[');
+
+          const lines = yamlStr.split('\n');
+          const sensitiveKeys = [
+            '身份',
+            '职业',
+            '性格',
+            '喜爱',
+            '外貌特质',
+            '衣物装饰',
+            '背景故事',
+            '描述',
+            '效果',
+            '标签',
+            '消耗',
+            '类型',
+            '品质',
+            '神位',
+            '名称',
+            '姓名',
+            '种族',
+            '等级',
+            '生命层级',
+          ];
+          const attrKeys = ['力量', '敏捷', '体质', '智力', '精神'];
+
+          return lines
+            .map(line => {
+              const match = line.match(/^(\s*)([-\w\u4e00-\u9fa5]+)\s*:\s*(.+)$/);
+              if (!match) return line;
+              const [, indent, key, rawVal] = match;
+              let val = rawVal.trim();
+              if (val.startsWith('|') || val.startsWith('>')) return line;
+              if (
+                attrKeys.some(k => key.includes(k)) &&
+                (/[+=]/.test(val) || val.includes('{')) &&
+                !/^["'].*["']$/.test(val)
+              ) {
+                return `${indent}${key}: "${val.replace(/"/g, '\\"')}"`;
+              }
+              const isSensitive = sensitiveKeys.some(k => key.includes(k));
+              if ((isSensitive || /[\{\}\[\]]/.test(val) || val.includes('"')) && !/^["'].*["']$/.test(val)) {
+                return `${indent}${key}: "${val.replace(/"/g, '\\"')}"`;
+              }
+              return line;
+            })
+            .join('\n');
+        }
+
+        function parseRobust(yamlStr) {
+          try {
+            // 检查 js-yaml 是否已加载
+            if (typeof jsyaml === 'undefined') {
+              console.error('js-yaml CDN 未加载 - 可能被 iframe 安全策略阻止');
+              return { success: false, error: 'js-yaml 库未加载。请检查网络连接或 iframe 安全策略。' };
+            }
+            const cleaned = cleanYaml(yamlStr);
+            const data = jsyaml.load(cleaned);
+            if (!data) throw new Error('解析结果为空');
+            return { success: true, data };
+          } catch (e) {
+            console.error('Parsing failed:', e);
+            return { success: false, error: e.mark ? `第 ${e.mark.line + 1} 行附近解析错误: ${e.reason}` : e.message };
+          }
+        }
+
+        // ============================================================
+        // 导航
+        // ============================================================
+        function navTo(pageId) {
+          ROOT.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+          const activeBtn = ROOT.querySelector(`.nav-item[data-nav="${pageId}"]`);
+          if (activeBtn) activeBtn.classList.add('active');
+
+          ROOT.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+          const target = ROOT.querySelector('#page-' + pageId);
+          if (target) target.classList.add('active');
+
+          if (pageId === 'home') ROOT.classList.remove('mode-details');
+          else ROOT.classList.add('mode-details');
+        }
+
+        ROOT.querySelectorAll('.nav-item').forEach(btn => {
+          btn.addEventListener('click', () => navTo(btn.dataset.nav));
+        });
+
+        // ============================================================
+        // 雷达图
+        // ============================================================
+        function drawRadar(stats) {
+          const angles = [-90, -18, 54, 126, 198];
+          const maxR = 80;
+          const maxVal = Math.max(20, ...stats); // 动态最大值
+          const points = angles
+            .map((angle, i) => {
+              const val = Math.min(Math.max(stats[i], 0), maxVal);
+              const r = (val / maxVal) * maxR;
+              const rad = (angle * Math.PI) / 180;
+              return `${(r * Math.cos(rad)).toFixed(1)},${(r * Math.sin(rad)).toFixed(1)}`;
+            })
+            .join(' ');
+          ROOT.querySelector('#radar-poly').setAttribute('points', points);
+        }
+
+        function toggleAttr(el, text) {
+          const detailBox = ROOT.querySelector('#attr-detail-box');
+          ROOT.querySelectorAll('.attr-flag').forEach(flag => flag.classList.remove('active'));
+          el.classList.add('active');
+          detailBox.innerText = text;
+          detailBox.classList.add('visible');
+        }
+
+        // ============================================================
+        // 卡片生成
+        // ============================================================
+        function getQualityClass(quality) {
+          if (!quality) return '';
+          for (const [key, cls] of Object.entries(qualityClassMap)) {
+            if (quality.includes(key)) return cls;
+          }
+          return '';
+        }
+
+        function getQualityPrefix(quality) {
+          if (!quality) return '';
+          for (const key of Object.keys(qualityClassMap)) {
+            if (quality.includes(key)) return key;
+          }
+          return quality;
+        }
+
+        function createTags(tags) {
+          return getSmartArray(tags)
+            .map(t => `<span class="tag">${t}</span>`)
+            .join('');
+        }
+
+        function createCostTags(cost) {
+          const costs = getSmartArray(cost);
+          return costs.map(c => `<span class="tag cost">消耗: ${c}</span>`).join('');
+        }
+
+        function createSkillCard(item) {
+          const q = getQualityClass(item.品质);
+          const prefix = getQualityPrefix(item.品质);
+          const effect = (item.效果 || '无').replace(/\n/g, '<br>');
+          return `<div class="card ${q}">
+            <div class="card-header">
+              ${prefix ? `<span class="prefix ${q}">【${prefix}】</span>` : ''}<span class="card-title">${item.名称 || '?'}</span>
+            </div>
+            <div class="card-tags">
+              ${item.类型 ? `<span class="tag">${item.类型}</span>` : ''}
+              ${createTags(item.标签)}
+              ${createCostTags(item.消耗)}
+            </div>
+            <div class="card-body">${effect}</div>
+            ${item.描述 ? `<div class="card-flavor">${item.描述}</div>` : ''}
+          </div>`;
+        }
+
+        function createEquipCard(item) {
+          const q = getQualityClass(item.品质);
+          const prefix = getQualityPrefix(item.品质);
+          const effect = (item.效果 || '无').replace(/\n/g, '<br>');
+          const typeStr = item.分类 || item.类型 || '';
+          return `<div class="card ${q}">
+            <div class="card-header">
+              ${prefix ? `<span class="prefix ${q}">【${prefix}】</span>` : ''}<span class="card-title">${item.名称 || '?'}</span>
+            </div>
+            <div class="card-tags">
+              ${typeStr ? `<span class="tag">${typeStr}</span>` : ''}
+              ${createTags(item.标签)}
+            </div>
+            <div class="card-body">${effect}</div>
+            ${item.描述 ? `<div class="card-flavor">${item.描述}</div>` : ''}
+          </div>`;
+        }
+
+        function createDivinityCard(item, type) {
+          const content = (item.效果 || item.描述 || '无').replace(/\n/g, '<br>');
+          return `<div class="card power">
+            <div class="card-header">
+              <span class="prefix power">【${type}】</span><span class="card-title">${item.名称 || '?'}</span>
+            </div>
+            <div class="card-body">${content}</div>
+          </div>`;
+        }
+
+        function createLawCard(item) {
+          const passive = (item.被动效果 || '').replace(/\n/g, '<br>');
+          const active = (item.主动效果 || '').replace(/\n/g, '<br>');
+          const desc = (item.描述 || '').replace(/\n/g, '<br>');
+          return `<div class="card power">
+            <div class="card-header">
+              <span class="prefix power">【法则】</span><span class="card-title">${item.名称 || '?'}</span>
+            </div>
+            ${
+              passive || active
+                ? `<div class="card-tags">
+              ${passive ? `<span class="tag cost">被动</span>` : ''}
+              ${active ? `<span class="tag cost">主动</span>` : ''}
+            </div>`
+                : ''
+            }
+            <div class="card-body">
+              ${desc ? `<p style="margin:0 0 8px 0">${desc}</p>` : ''}
+              ${passive ? `<p style="margin:4px 0"><strong style="color:var(--c-gold)">被动:</strong> ${passive}</p>` : ''}
+              ${active ? `<p style="margin:4px 0"><strong style="color:var(--c-gold)">主动:</strong> ${active}</p>` : ''}
+            </div>
+          </div>`;
+        }
+
+        // ============================================================
+        // 主渲染
+        // ============================================================
+        function renderSheet(data, originalYaml) {
+          // --- 层级 ---
+          const tierMap = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7 };
+          const tierStr = (data.生命层级 || '').toString().match(/第(.)层级/);
+          const tier = tierStr ? tierMap[tierStr[1]] : parseInt(data.生命层级) || 1;
+          const tierHex = tierColorMap[tier] || tierColorMap[1];
+
+          // --- 种族颜色 ---
+          let raceKey = '其他';
+          const race = data.种族 || '其他';
+          for (const k in raceColorMap) {
+            if (race.includes(k)) {
+              raceKey = k;
+              break;
+            }
+          }
+
+          // --- 角色名 ---
+          const charName = data.姓名 || 'Unknown';
+
+          // --- 背景图 ---
+          const bgChar = ROOT.querySelector('#bg-char');
+          if (npcBackgroundMap[charName]) {
+            bgChar.style.backgroundImage = `url('${npcBackgroundMap[charName]}')`;
+            bgChar.style.opacity = '1';
+          } else {
+            bgChar.style.backgroundImage = `url('${charName}.png')`;
+            bgChar.style.opacity = '1';
+            const testImg = new Image();
+            testImg.onerror = () => {
+              bgChar.style.opacity = '0';
+            };
+            testImg.src = charName + '.png';
+          }
+
+          // --- 首页 ---
+          const nameEl = ROOT.querySelector('[data-name]');
+          nameEl.textContent = charName;
+          if (charName.length > 6) nameEl.style.fontSize = '2rem';
+
+          const formatList = val => getSmartArray(val).join(' / ') || '';
+          const classStr = formatList(data.职业);
+          ROOT.querySelector('[data-info]').textContent = `LV.${data.等级 || '?'} ${classStr} / ${data.生命层级 || ''}`;
+          ROOT.querySelector('[data-info]').style.color = tierHex;
+
+          // 语录区域 - 优先从 MVU 变量读取 心里话，回退到性格文本
+          const quotesArea = ROOT.querySelector('[data-quotes]');
+          let quotesSet = false;
+          // 尝试从 MVU 读取 心里话
+          try {
+            const mvuApi = window.Mvu || (window.parent && window.parent.Mvu);
+            if (mvuApi && typeof mvuApi.getMvuData === 'function') {
+              const mvuResult = mvuApi.getMvuData({ type: 'message', message_id: 'latest' });
+              const xinlihua = mvuResult?.stat_data?.命定系统?.关系列表?.[charName]?.心里话;
+              if (xinlihua && String(xinlihua).trim()) {
+                quotesArea.textContent = String(xinlihua).trim();
+                quotesArea.style.color = '#ccc';
+                quotesSet = true;
+              }
+            }
+          } catch (e) {
+            console.warn('[NPC Viewer] 读取 MVU 心里话失败:', e);
+          }
+          // 回退：显示性格文本
+          if (!quotesSet && data.性格) {
+            const personality = Array.isArray(data.性格) ? data.性格.join('，') : String(data.性格);
+            quotesArea.textContent = personality.substring(0, 80) + (personality.length > 80 ? '...' : '');
+            quotesArea.style.color = '#aaa';
+          }
+
+          // --- 状态页：属性雷达 ---
+          const attrKeys = ['力量', '敏捷', '体质', '智力', '精神'];
+          const attrLabels = ['STR', 'AGI', 'CON', 'INT', 'SPR'];
+          const flagKeys = ['str', 'agi', 'con', 'int', 'spr'];
+          const attrValues = [];
+
+          attrKeys.forEach((key, i) => {
+            const raw = data.属性 ? getAttributeFormula(data.属性[key]) : '0';
+            const total = parseAttributeValue(raw);
+            attrValues.push(total);
+
+            const flag = ROOT.querySelector(`[data-attr-flag="${flagKeys[i]}"]`);
+            if (flag) {
+              flag.textContent = `${attrLabels[i]} ${total}`;
+              flag.onclick = () => toggleAttr(flag, `${key}: ${raw}`);
+            }
+          });
+
+          drawRadar(attrValues);
+
+          // --- 状态页：Meta ---
+          const metaBlock = ROOT.querySelector('#meta-block');
+          const identityStr = formatList(data.身份);
+          let metaHtml = '';
+          metaHtml += `<div class="meta-line"><span class="meta-label">姓名</span><span class="meta-data">${charName}</span></div>`;
+          metaHtml += `<div class="meta-line"><span class="meta-label">生命层级</span><span class="meta-data" style="color:${tierHex}">${data.生命层级 || '-'}</span></div>`;
+          metaHtml += `<div class="meta-line"><span class="meta-label">等级</span><span class="meta-data">${data.等级 || '-'}</span></div>`;
+          metaHtml += `<div class="meta-line"><span class="meta-label">种族</span><span class="meta-data">${race}</span></div>`;
+          if (identityStr)
+            metaHtml += `<div class="meta-line"><span class="meta-label">身份</span><span class="meta-data">${identityStr}</span></div>`;
+          if (classStr)
+            metaHtml += `<div class="meta-line"><span class="meta-label">职业</span><span class="meta-data">${classStr}</span></div>`;
+          metaBlock.innerHTML = metaHtml;
+
+          // --- 技能页 ---
+          const skillsContainer = ROOT.querySelector('#skills-container');
+          skillsContainer.innerHTML = '';
+          if (data.技能 && Array.isArray(data.技能) && data.技能.length > 0) {
+            data.技能.forEach(item => {
+              skillsContainer.innerHTML += createSkillCard(item);
+            });
+          } else {
+            skillsContainer.innerHTML = '<div style="text-align:center;color:#666;padding:20px;">暂无技能</div>';
+          }
+
+          // --- 装备页 ---
+          const equipContainer = ROOT.querySelector('#equip-container');
+          equipContainer.innerHTML = '';
+          const hasEquip = data.装备 && Array.isArray(data.装备) && data.装备.length > 0;
+          const hasItems = data.道具 && Array.isArray(data.道具) && data.道具.length > 0;
+          const hasSpecial = data.特殊物品 && Array.isArray(data.特殊物品) && data.特殊物品.length > 0;
+
+          if (hasEquip)
+            data.装备.forEach(item => {
+              equipContainer.innerHTML += createEquipCard(item);
+            });
+          if (hasItems) {
+            equipContainer.innerHTML += '<h3 class="sub-section-title">道具</h3>';
+            data.道具.forEach(item => {
+              equipContainer.innerHTML += createEquipCard(item);
+            });
+          }
+          if (hasSpecial) {
+            equipContainer.innerHTML += '<h3 class="sub-section-title">特殊物品</h3>';
+            data.特殊物品.forEach(item => {
+              equipContainer.innerHTML += createEquipCard(item);
+            });
+          }
+          if (!hasEquip && !hasItems && !hasSpecial) {
+            equipContainer.innerHTML = '<div style="text-align:center;color:#666;padding:20px;">暂无装备</div>';
+          }
+
+          // --- 登神长阶页 ---
+          const divData = data.登神长阶 || {};
+          const rawDeity = hasText(divData.神位) ? divData.神位 : hasText(data.神位) ? data.神位 : null;
+          const rawKingdom = divData.神国 || data.神国;
+          const rawElements = hasArrayContent(divData.要素)
+            ? divData.要素
+            : hasArrayContent(data.要素)
+              ? data.要素
+              : [];
+          const rawPowers = hasArrayContent(divData.权能) ? divData.权能 : hasArrayContent(data.权能) ? data.权能 : [];
+          const rawLaws = hasArrayContent(divData.法则) ? divData.法则 : hasArrayContent(data.法则) ? data.法则 : [];
+          const hasDivinity =
+            rawDeity ||
+            (rawKingdom && hasText(rawKingdom.名称)) ||
+            rawElements.length > 0 ||
+            rawPowers.length > 0 ||
+            rawLaws.length > 0;
+
+          const divinityContainer = ROOT.querySelector('#divinity-container');
+          divinityContainer.innerHTML = '';
+
+          if (hasDivinity) {
+            ROOT.querySelector('#nav-ascension').style.display = '';
+            if (rawDeity) divinityContainer.innerHTML += `<div class="divinity-deity">${rawDeity}</div>`;
+            if (rawKingdom && hasText(rawKingdom.名称)) {
+              divinityContainer.innerHTML += `<div class="card mythic"><div class="card-header"><span class="prefix mythic">【神国】</span><span class="card-title">${rawKingdom.名称}</span></div><div class="card-body">${(rawKingdom.描述 || '无').replace(/\n/g, '<br>')}</div></div>`;
+            }
+            if (rawElements.length > 0) {
+              divinityContainer.innerHTML += '<h3 class="sub-section-title">要素</h3>';
+              rawElements.forEach(item => {
+                divinityContainer.innerHTML += createDivinityCard(item, '要素');
+              });
+            }
+            if (rawPowers.length > 0) {
+              divinityContainer.innerHTML += '<h3 class="sub-section-title">权能</h3>';
+              rawPowers.forEach(item => {
+                divinityContainer.innerHTML += createDivinityCard(item, '权能');
+              });
+            }
+            if (rawLaws.length > 0) {
+              divinityContainer.innerHTML += '<h3 class="sub-section-title">法则</h3>';
+              rawLaws.forEach(item => {
+                divinityContainer.innerHTML += createLawCard(item);
+              });
+            }
+          }
+
+          // --- 档案页 ---
+          const storyContainer = ROOT.querySelector('#story-container');
+          let storyHtml = '';
+          if (data.性格) {
+            const t = Array.isArray(data.性格) ? data.性格.join('，') : String(data.性格);
+            storyHtml += `<strong>性格</strong><p>${t.replace(/\n/g, '<br>')}</p>`;
+          }
+          if (data.喜爱) {
+            const t = Array.isArray(data.喜爱) ? data.喜爱.join('，') : String(data.喜爱);
+            storyHtml += `<strong>喜爱</strong><p>${t.replace(/\n/g, '<br>')}</p>`;
+          }
+          if (data.外貌特质)
+            storyHtml += `<strong>外貌特质</strong><p>${String(data.外貌特质).replace(/\n/g, '<br>')}</p>`;
+          if (data.衣物装饰)
+            storyHtml += `<strong>衣物装饰</strong><p>${String(data.衣物装饰).replace(/\n/g, '<br>')}</p>`;
+          if (data.背景故事)
+            storyHtml += `<strong>背景故事</strong><p>${String(data.背景故事).replace(/\n/g, '<br>')}</p>`;
+          storyContainer.innerHTML =
+            storyHtml || '<div style="text-align:center;color:#666;padding:20px;">暂无档案</div>';
+
+          // --- 隐藏无内容的导航 ---
+          if (!data.技能 || data.技能.length === 0) ROOT.querySelector('[data-nav="skill"]').style.display = 'none';
+          if (!hasEquip && !hasItems && !hasSpecial) ROOT.querySelector('[data-nav="equip"]').style.display = 'none';
+
+          // --- 按钮 ---
+          addLorebookButton(data, originalYaml);
+          addMVUButton(data);
+        }
+
+        // ============================================================
+        // Lorebook 按钮
+        // ============================================================
+        function addLorebookButton(data, originalYaml) {
+          const container = ROOT.querySelector('#action-buttons');
+          if (!container || document.getElementById('save-to-lorebook-btn')) return;
+          container.style.display = 'flex';
+
+          const button = document.createElement('button');
+          button.id = 'save-to-lorebook-btn';
+          button.className = 'action-btn';
+          button.textContent = '💾';
+          button.title = '保存到世界书';
+          button.addEventListener('click', async e => {
+            e.stopPropagation();
+            const api = window.TavernHelper || window;
+            if (
+              typeof api.getOrCreateChatWorldbook !== 'function' ||
+              typeof api.createWorldbookEntries !== 'function'
+            ) {
+              alert('错误：未检测到 Worldbook API。');
+              return;
+            }
+            try {
+              button.textContent = '⏳';
+              const characterName = data.姓名 || 'Unknown';
+              let shortName = characterName.split(/[·\s]/)[0];
+              const lorebookKey = shortName && shortName.trim().length > 0 ? shortName : characterName;
+              let bookName = (await api.getChatWorldbookName) ? await api.getChatWorldbookName('current') : null;
+              if (!bookName) {
+                const now = new Date();
+                const timeStr = `${now.getFullYear()}_${(now.getMonth() + 1).toString().padStart(2, '0')}_${now.getDate().toString().padStart(2, '0')}_${now.getHours()}h_${now.getMinutes()}m_${now.getSeconds()}s`;
+                bookName = await api.getOrCreateChatWorldbook('current', `命定之诗-charinfo-Chat_Book_${timeStr}`);
+              } else {
+                if (!bookName) bookName = await api.getOrCreateChatWorldbook('current');
+              }
+              await api.createWorldbookEntries(bookName, [
+                {
+                  name: characterName,
+                  enabled: true,
+                  strategy: { type: 'selective', keys: [lorebookKey] },
+                  position: { type: 'after_character_definition', order: 152 },
+                  content: originalYaml,
+                },
+              ]);
+              button.textContent = '✅';
+              setTimeout(() => (button.textContent = '💾'), 1000);
+            } catch (err) {
+              console.error('Worldbook Save Error:', err);
+              button.textContent = '❌';
+              alert('保存失败: ' + err.message);
+              setTimeout(() => (button.textContent = '💾'), 1000);
+            }
+          });
+          container.appendChild(button);
+        }
+
+        // ============================================================
+        // MVU 按钮
+        // ============================================================
+        function addMVUButton(data) {
+          const container = ROOT.querySelector('#action-buttons');
+          if (!container || document.getElementById('save-to-mvu-btn')) return;
+
+          const button = document.createElement('button');
+          button.id = 'save-to-mvu-btn';
+          button.className = 'action-btn';
+          button.textContent = '📥';
+          button.title = '导入到 MVU 变量';
+
+          button.addEventListener('click', async e => {
+            e.stopPropagation();
+            const api = window.TavernHelper || (window.parent && window.parent.TavernHelper) || window;
+            if (!api || typeof api.updateVariablesWith !== 'function') {
+              alert('错误：未检测到 TavernHelper API。');
+              return;
+            }
+            if (!confirm(`确定要将角色 "${data.姓名 || 'Unknown'}" 导入到 MVU 变量系统吗？`)) return;
+
+            try {
+              button.textContent = '⏳';
+              const charName = data.姓名 || 'Unknown';
+              const ensureString = val => {
+                if (Array.isArray(val)) return val.join(', ');
+                return val ? String(val) : '';
+              };
+              const ensureArray = val => getSmartArray(val);
+              const arrayToMap = (arr, type) => {
+                const map = {};
+                if (Array.isArray(arr)) {
+                  arr.forEach(item => {
+                    if (item && item.名称) {
+                      const { 名称, ...rest } = item;
+                      const processed = { ...rest };
+                      if (processed.标签) processed.标签 = ensureArray(processed.标签);
+                      else if (type === 'skill' || type === 'equip') processed.标签 = [];
+                      if (type !== 'divinity') {
+                        if (typeof processed.效果 === 'string') processed.效果 = { 描述: processed.效果 };
+                        else if (!processed.效果) processed.效果 = {};
+                      }
+                      if (type === 'equip') {
+                        processed.品质 = processed.品质 || '未知';
+                        processed.类型 = processed.分类 || processed.类型 || '未知';
+                        processed.描述 = processed.描述 || '';
+                        processed.位置 = processed.位置 || '';
+                      } else if (type === 'skill') {
+                        processed.品质 = processed.品质 || '未知';
+                        processed.类型 = processed.类型 || '未知';
+                        processed.消耗 = processed.消耗 ? ensureString(processed.消耗) : '';
+                        processed.描述 = processed.描述 || '';
+                      }
+                      map[名称] = processed;
+                    }
+                  });
+                }
+                return map;
+              };
+
+              // 先读取现有变量，保留已有的 心里话 和 好感度
+              let prefix = 'stat_data.';
+              const targetScope = { type: 'message', message_id: 'latest' };
+              let existing心里话 = '';
+              let existing好感度 = 0;
+              let existing命定契约 = false;
+              try {
+                const currentVars = await api.getVariables(targetScope);
+                if (currentVars && currentVars.命定系统) {
+                  prefix = '';
+                  const existingNpc = currentVars.命定系统?.关系列表?.[charName];
+                  if (existingNpc) {
+                    if (existingNpc.心里话 && String(existingNpc.心里话).trim()) existing心里话 = existingNpc.心里话;
+                    if (existingNpc.好感度 !== undefined) existing好感度 = existingNpc.好感度;
+                    if (existingNpc.命定契约 !== undefined) existing命定契约 = existingNpc.命定契约;
+                  }
+                } else if (currentVars && currentVars.stat_data) {
+                  prefix = 'stat_data.';
+                  const existingNpc = currentVars.stat_data?.命定系统?.关系列表?.[charName];
+                  if (existingNpc) {
+                    if (existingNpc.心里话 && String(existingNpc.心里话).trim()) existing心里话 = existingNpc.心里话;
+                    if (existingNpc.好感度 !== undefined) existing好感度 = existingNpc.好感度;
+                    if (existingNpc.命定契约 !== undefined) existing命定契约 = existingNpc.命定契约;
+                  }
+                }
+              } catch (e) {
+                console.warn('Failed to detect variable path', e);
+              }
+
+              const mvuData = {
+                在场: true,
+                生命层级: data.生命层级 || '第一层级/普通层级',
+                等级: parseInt(data.等级) || 1,
+                种族: data.种族 || '未知',
+                身份: ensureArray(data.身份),
+                职业: ensureArray(data.职业),
+                性格: ensureString(data.性格).trim(),
+                喜爱: ensureString(data.喜爱).trim(),
+                外貌: ensureString(data.外貌特质).trim(),
+                着装: ensureString(data.衣物装饰).trim(),
+                属性: {
+                  力量: parseAttributeValue(data.属性?.力量),
+                  敏捷: parseAttributeValue(data.属性?.敏捷),
+                  体质: parseAttributeValue(data.属性?.体质),
+                  智力: parseAttributeValue(data.属性?.智力),
+                  精神: parseAttributeValue(data.属性?.精神),
+                },
+                技能: arrayToMap(data.技能, 'skill'),
+                装备: arrayToMap(data.装备, 'equip'),
+                登神长阶: {
+                  是否开启: !!(data.登神长阶 || (data.生命层级 && data.生命层级.includes('神'))),
+                  神位: data.登神长阶?.神位 || data.神位 || '',
+                  神国: {
+                    名称: data.登神长阶?.神国?.名称 || data.神国?.名称 || '',
+                    描述: data.登神长阶?.神国?.描述 || data.神国?.描述 || '',
+                  },
+                  要素: arrayToMap(data.登神长阶?.要素 || data.要素, 'divinity'),
+                  权能: arrayToMap(data.登神长阶?.权能 || data.权能, 'divinity'),
+                  法则: arrayToMap(data.登神长阶?.法则 || data.法则, 'divinity'),
+                },
+                命定契约: existing命定契约,
+                好感度: existing好感度,
+                心里话: existing心里话,
+                背景故事: data.背景故事 || '',
+              };
+
+              const updatePayload = {};
+              if (prefix === 'stat_data.')
+                updatePayload['stat_data'] = { 命定系统: { 关系列表: { [charName]: mvuData } } };
+              else updatePayload['命定系统'] = { 关系列表: { [charName]: mvuData } };
+
+              await api.insertOrAssignVariables(updatePayload, targetScope);
+              button.textContent = '✅';
+              setTimeout(() => (button.textContent = '📥'), 2000);
+            } catch (err) {
+              console.error('MVU Import Error:', err);
+              button.textContent = '❌';
+              alert('导入失败: ' + err.message);
+              setTimeout(() => (button.textContent = '📥'), 2000);
+            }
+          });
+          container.appendChild(button);
+        }
+
+        // ============================================================
+        // 入口 - 直接执行 (脚本在 body 底部, DOM 已就绪)
+        // 注意: 禁止使用 DOMContentLoaded, 在 ST 的 $('body').load() 加载方式下不会触发
+        // ============================================================
+        function initViewer() {
+          try {
+            const yamlDataSource = document.getElementById('data-source');
+            if (yamlDataSource) {
+              const yamlData = yamlDataSource.textContent;
+              if (yamlData && yamlData.trim()) {
+                const result = parseRobust(yamlData);
+                if (result.success) {
+                  renderSheet(result.data, yamlData);
+                } else {
+                  // 解析失败时不要替换整个 content-area，保持导航可用
+                  ROOT.querySelector('[data-name]').textContent = '解析失败';
+                  ROOT.querySelector('[data-name]').style.color = '#ff6b6b';
+                  ROOT.querySelector('[data-info]').textContent = result.error;
+                  ROOT.querySelector('[data-info]').style.color = '#ff6b6b';
+                  ROOT.querySelector('[data-info]').style.fontSize = '0.7rem';
+                  ROOT.querySelector('[data-quotes]').textContent = '⚠️ YAML 数据格式有误，请检查 LLM 输出';
+                  ROOT.querySelector('[data-quotes]').style.color = '#ff6b6b';
+                  console.error('[NPC Viewer] Parse error:', result.error);
+                }
+              } else {
+                ROOT.querySelector('[data-name]').textContent = '等待数据...';
+                ROOT.querySelector('[data-info]').textContent = '将由系统注入角色 YAML';
+              }
+            }
+          } catch (err) {
+            console.error('[NPC Viewer] Init error:', err);
+            var nameEl = ROOT.querySelector('[data-name]');
+            if (nameEl) {
+              nameEl.textContent = '初始化错误';
+              nameEl.style.color = '#ff6b6b';
+            }
+            var infoEl = ROOT.querySelector('[data-info]');
+            if (infoEl) {
+              infoEl.textContent = err.message;
+              infoEl.style.color = '#ff6b6b';
+            }
+          }
+        }
+
+        // 直接执行 - 脚本位于 body 底部, DOM 已可用
+        // 如果 jQuery 可用 (ST iframe 环境), 使用 $() 确保安全; 否则直接执行
+        if (typeof $ === 'function') {
+          $(function () {
+            initViewer();
+          });
+        } else {
+          initViewer();
+        }
+      })();
+    </script>
+  </body>
+</html>
+```

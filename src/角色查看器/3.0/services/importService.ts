@@ -132,14 +132,17 @@ export async function importToMvuVariables(data: CharacterData): Promise<void> {
 
   let preservedFavor: unknown = undefined;
   let preservedHeart: unknown = undefined;
+  let preservedContract: unknown = undefined;
   for (const entry of candidates) {
     if (!entry) continue;
     if (preservedFavor === undefined) preservedFavor = keepIfPresent(entry?.好感度);
     if (preservedHeart === undefined) preservedHeart = keepIfPresent(entry?.心里话);
+    if (preservedContract === undefined) preservedContract = keepIfPresent(entry?.命定契约);
   }
 
   if (preservedFavor !== undefined) (mvuData as any).好感度 = preservedFavor;
   if (preservedHeart !== undefined) (mvuData as any).心里话 = preservedHeart;
+  if (preservedContract !== undefined) (mvuData as any).命定契约 = preservedContract;
 
   const updatePayload: Record<string, any> = {};
   if (prefix === 'stat_data.') {

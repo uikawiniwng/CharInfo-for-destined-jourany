@@ -3,20 +3,23 @@
     <div v-if="parseError" class="error-card">
       <h3>⚠️ YAML 解析失败</h3>
       <div class="error-body">
-        <div class="yaml-error-row yaml-error-sub"><b>技术信息：</b>{{ parseError.message }}</div>
+        <div class="yaml-error-row"><b>技术信息：</b>{{ parseError.message }}</div>
         <div v-if="parseError.line !== undefined" class="yaml-error-row">
           <b>定位：</b>第 {{ (parseError.line ?? 0) + 1 }} 行，第 {{ (parseError.column ?? 0) + 1 }} 列
         </div>
 
-        <div v-if="parseErrorTips.length > 0" class="yaml-fix-box">
-          <div class="yaml-fix-title">宝宝别急，三角老师带你一步步排查</div>
+        <div class="yaml-fix-box">
+          <div class="yaml-fix-title">排查建议</div>
           <ul class="yaml-fix-list">
-            <li v-for="tip in parseErrorTips" :key="tip">{{ tip }}</li>
+            <li>先看箭头 ^ 指向位置，再改该处附近</li>
+            <li>检查 “键: 值” 结构是否完整</li>
+            <li>检查缩进是否和同层字段一致</li>
+            <li>检查引号、括号、列表符号是否成对</li>
           </ul>
         </div>
 
         <template v-if="parseError.cleanedLine">
-          <div class="yaml-error-title">系统定位到的出错行（请重点检查）</div>
+          <div class="yaml-error-title">系统定位到的出错行</div>
           <pre class="yaml-error-pre"
             >{{ parseError.cleanedLine }}
 {{ parseError.caretLine }}</pre
@@ -24,267 +27,70 @@
         </template>
 
         <details v-if="parseError.originalLine" class="yaml-error-details">
-          <summary>查看你输入的原始内容（可选）</summary>
+          <summary>查看原始内容</summary>
           <pre class="yaml-error-pre alt">{{ parseError.originalLine }}</pre>
         </details>
       </div>
     </div>
 
-    <div v-else-if="sheetData" :class="wrapperClasses">
-      <div class="frame-layer" :class="{ show: tierNumber >= 5 }" aria-hidden="true">
-        <svg class="frame-svg frame-top" viewBox="0 0 400 100" preserveAspectRatio="none">
-          <path d="M 5,100 A 195,80 0 0,1 395,100" />
-          <path d="M 15,100 A 185,70 0 0,1 385,100" stroke-width="1" opacity="0.6" />
-          <line x1="60" y1="60" x2="60" y2="90" stroke-width="1" />
-          <line x1="340" y1="60" x2="340" y2="90" stroke-width="1" />
-          <circle cx="60" cy="92" r="3" fill="var(--tier-color)" stroke="none" />
-          <circle cx="340" cy="92" r="3" fill="var(--tier-color)" stroke="none" />
-          <path
-            d="M 200,2 L 205,15 L 220,20 L 205,25 L 200,38 L 195,25 L 180,20 L 195,15 Z"
-            fill="var(--tier-color)"
-            stroke="none"
-          />
-        </svg>
-        <svg class="frame-svg frame-body" viewBox="0 0 400 100" preserveAspectRatio="none">
-          <line x1="5" y1="0" x2="5" y2="100" />
-          <line x1="395" y1="0" x2="395" y2="100" />
-          <line x1="15" y1="0" x2="15" y2="98" stroke-width="1" opacity="0.6" />
-          <line x1="385" y1="0" x2="385" y2="98" stroke-width="1" opacity="0.6" />
-          <line x1="5" y1="100" x2="395" y2="100" />
-        </svg>
-      </div>
+    <div v-else-if="renderModel" id="char-showcase-root" ref="rootRef" :class="{ 'mode-details': activePage !== 'home' }">
+      <div id="bg-base" class="bg-layer"></div>
+      <div id="bg-char" class="bg-layer" :style="bgCharStyle"></div>
 
-      <div ref="bgLayerRef" class="card-background-layer">
-        <canvas id="particle-canvas" ref="canvasRef"></canvas>
-      </div>
-
-      <div class="sheet-content-wrapper">
-        <header class="sheet-header">
-          <span class="level-badge">Lv.{{ levelText }}</span>
-          <h1 class="char-name">{{ nameText }}</h1>
-          <div class="char-meta-row">
-            <span>{{ raceText }}</span>
-            <span class="meta-separator">◆</span>
-            <span>{{ identityText }}</span>
-            <span class="meta-separator">◆</span>
-            <span>{{ classText }}</span>
-            <span class="meta-separator">◆</span>
-            <span class="tier-name">{{ tierText }}</span>
-          </div>
-        </header>
-
-        <div class="sheet-body">
-          <div class="attributes-grid">
-            <div
-              v-for="attr in attributes"
-              :key="attr.key"
-              class="attribute-item"
-              :class="{ 'show-formula': attr.showFormula, 'has-formula': !!attr.formula }"
-              @click="toggleAttributeFormula(attr.key)"
-            >
-              <span class="attribute-name">{{ attr.short }}</span>
-              <span class="attribute-total">{{ attr.total }}</span>
-              <span v-if="attr.formula" class="attribute-formula">{{ attr.formula }}</span>
-            </div>
-          </div>
-
-          <div class="tab-nav">
-            <button
-              v-for="tab in visibleTabs"
-              :key="tab.key"
-              class="tab-button"
-              :class="{ active: activeTab === tab.key }"
-              @click="activeTab = tab.key"
-            >
-              {{ tab.label }}
-            </button>
-          </div>
-
-          <section class="tab-content">
-            <template v-if="activeTab === 'profile'">
-              <div class="profile-grid">
-                <div class="profile-row">
-                  <div class="profile-cell">
-                    <template v-if="personalityText">
-                      <h3 class="subsection-title">性格</h3>
-                      <div class="story profile-panel">{{ personalityText }}</div>
-                    </template>
-                  </div>
-
-                  <div class="profile-cell">
-                    <template v-if="appearanceText">
-                      <h3 class="subsection-title">外貌特质</h3>
-                      <div class="story profile-panel">{{ appearanceText }}</div>
-                    </template>
-                  </div>
-                </div>
-
-                <div class="profile-row">
-                  <div class="profile-cell">
-                    <template v-if="likesText">
-                      <h3 class="subsection-title">喜爱</h3>
-                      <div class="story profile-panel">{{ likesText }}</div>
-                    </template>
-                  </div>
-
-                  <div class="profile-cell">
-                    <template v-if="attireText">
-                      <h3 class="subsection-title">衣物装饰</h3>
-                      <div class="story profile-panel">{{ attireText }}</div>
-                    </template>
-                  </div>
-                </div>
-              </div>
-            </template>
-
-            <template v-else-if="activeTab === 'skills'">
-              <article v-for="(item, index) in skills" :key="`skill-${index}-${itemName(item)}`" class="card">
-                <div class="card-header">
-                  <h3 class="card-title" :class="qualityClass(item)">{{ itemName(item) }}</h3>
-                  <span v-if="itemQuality(item)" class="card-subtitle" :class="qualityClass(item)">{{
-                    itemQuality(item)
-                  }}</span>
-                </div>
-                <div class="card-body">
-                  <div v-if="itemTags(item).length > 0" class="card-tags">
-                    <span v-for="tag in itemTags(item)" :key="`skill-tag-${index}-${tag}`" class="card-tag">
-                      {{ tag }}
-                    </span>
-                  </div>
-                  <p v-if="itemType(item)"><span class="card-label">类型:</span>{{ itemType(item) }}</p>
-                  <p v-if="itemCost(item)"><span class="card-label">消耗:</span>{{ itemCost(item) }}</p>
-                  <p><span class="card-label">效果:</span>{{ itemEffect(item) }}</p>
-                  <p v-if="itemDescription(item)" class="card-description">{{ itemDescription(item) }}</p>
-                </div>
-              </article>
-            </template>
-
-            <template v-else-if="activeTab === 'equipment'">
-              <article v-for="(item, index) in equipments" :key="`equip-${index}-${itemName(item)}`" class="card">
-                <div class="card-header">
-                  <h3 class="card-title" :class="qualityClass(item)">{{ itemName(item) }}</h3>
-                  <span v-if="itemQuality(item)" class="card-subtitle" :class="qualityClass(item)">{{
-                    itemQuality(item)
-                  }}</span>
-                </div>
-                <div class="card-body">
-                  <div v-if="itemTags(item).length > 0" class="card-tags">
-                    <span v-for="tag in itemTags(item)" :key="`equip-tag-${index}-${tag}`" class="card-tag">
-                      {{ tag }}
-                    </span>
-                  </div>
-                  <p v-if="itemType(item)"><span class="card-label">类型:</span>{{ itemType(item) }}</p>
-                  <p><span class="card-label">效果:</span>{{ itemEffect(item) }}</p>
-                  <p v-if="itemDescription(item)" class="card-description">{{ itemDescription(item) }}</p>
-                </div>
-              </article>
-            </template>
-
-            <template v-else-if="activeTab === 'inventory'">
-              <template v-for="section in inventorySections" :key="section.key">
-                <h3 class="subsection-title">{{ section.title }}</h3>
-                <article
-                  v-for="(item, index) in section.items"
-                  :key="`${section.key}-${index}-${itemName(item)}`"
-                  class="card"
-                >
-                  <div class="card-header">
-                    <h3 class="card-title" :class="qualityClass(item)">{{ itemName(item) }}</h3>
-                    <span v-if="itemQuality(item)" class="card-subtitle" :class="qualityClass(item)">{{
-                      itemQuality(item)
-                    }}</span>
-                  </div>
-                  <div class="card-body">
-                    <div v-if="itemTags(item).length > 0" class="card-tags">
-                      <span v-for="tag in itemTags(item)" :key="`${section.key}-${index}-${tag}`" class="card-tag">
-                        {{ tag }}
-                      </span>
-                    </div>
-                    <p v-if="itemType(item)"><span class="card-label">类型:</span>{{ itemType(item) }}</p>
-                    <p><span class="card-label">效果:</span>{{ itemEffectOrDescription(item) }}</p>
-                    <p v-if="itemDescription(item)" class="card-description">{{ itemDescription(item) }}</p>
-                  </div>
-                </article>
-              </template>
-            </template>
-
-            <template v-else-if="activeTab === 'divinity'">
-              <h3 v-if="divinityGodTitle" class="subsection-title divinity-main-title">{{ divinityGodTitle }}</h3>
-
-              <article v-if="divinityKingdom" class="card divinity-card">
-                <div class="card-header">
-                  <h3 class="card-title">{{ divinityKingdom.name }}</h3>
-                </div>
-                <div class="card-body">
-                  <p>{{ divinityKingdom.description || '无' }}</p>
-                </div>
-              </article>
-
-              <template v-if="divinityElements.length > 0">
-                <h3 class="subsection-title">要素</h3>
-                <article
-                  v-for="(item, index) in divinityElements"
-                  :key="`elem-${index}-${itemName(item)}`"
-                  class="card divinity-card"
-                >
-                  <div class="card-header">
-                    <h3 class="card-title">{{ itemName(item) }}</h3>
-                  </div>
-                  <div class="card-body">
-                    <p>{{ itemEffectOrDescription(item) }}</p>
-                  </div>
-                </article>
-              </template>
-
-              <template v-if="divinityPowers.length > 0">
-                <h3 class="subsection-title">权能</h3>
-                <article
-                  v-for="(item, index) in divinityPowers"
-                  :key="`power-${index}-${itemName(item)}`"
-                  class="card divinity-card"
-                >
-                  <div class="card-header">
-                    <h3 class="card-title">{{ itemName(item) }}</h3>
-                  </div>
-                  <div class="card-body">
-                    <p>{{ itemEffectOrDescription(item) }}</p>
-                  </div>
-                </article>
-              </template>
-
-              <template v-if="divinityLaws.length > 0">
-                <h3 class="subsection-title">法则</h3>
-                <article
-                  v-for="(item, index) in divinityLaws"
-                  :key="`law-${index}-${itemName(item)}`"
-                  class="card divinity-card"
-                >
-                  <div class="card-header">
-                    <h3 class="card-title">{{ itemName(item) }}</h3>
-                  </div>
-                  <div class="card-body">
-                    <p v-if="itemDescription(item)">{{ itemDescription(item) }}</p>
-                    <p v-if="lawPassive(item)"><span class="card-label">被动:</span>{{ lawPassive(item) }}</p>
-                    <p v-if="lawActive(item)"><span class="card-label">主动:</span>{{ lawActive(item) }}</p>
-                  </div>
-                </article>
-              </template>
-            </template>
-
-            <template v-else>
-              <div class="story">{{ backstoryText || '暂无故事' }}</div>
-            </template>
-          </section>
-        </div>
-
-        <button id="import-action-btn" :disabled="importing" @click.stop="toggleImportMenu">
-          {{ importButtonText }}
+      <div class="action-buttons" id="action-buttons" style="display: flex">
+        <button class="action-btn" :disabled="importingWorldbook" title="保存到世界书" @click="onImportWorldbook">
+          {{ worldbookBtnText }}
         </button>
-        <div id="import-action-menu" :class="{ show: showImportMenu }">
-          <button type="button" :disabled="importing" @click="onImportMvu">导入到 MVU 变量</button>
-          <button type="button" :disabled="importing" @click="onImportWorldbook">导入到 聊天世界书</button>
-        </div>
+        <button class="action-btn" :disabled="importingMvu" title="导入到 MVU 变量" @click="onImportMvu">
+          {{ mvuBtnText }}
+        </button>
       </div>
+
+      <div id="content-area">
+        <Sp03HomePage
+          :active="activePage === 'home'"
+          :name="renderModel.name"
+          :info="renderModel.info"
+          :info-color="renderModel.infoColor"
+          :quote="renderModel.quote"
+          :quote-color="renderModel.quoteColor"
+        />
+
+        <Sp03StatusPage
+          :active="activePage === 'status'"
+          :attrs="renderModel.attrs"
+          :active-attr="activeAttr"
+          :detail-text="activeAttrDetail"
+          :meta-lines="renderModel.metaLines"
+          @select-attr="onSelectAttr"
+        />
+
+        <Sp03CardPage
+          page-key="skill"
+          title="技能列表"
+          :active="activePage === 'skill'"
+          :sections="renderModel.skillsSections"
+          empty-text="暂无技能"
+        />
+
+        <Sp03CardPage
+          page-key="equip"
+          title="装备道具"
+          :active="activePage === 'equip'"
+          :sections="renderModel.equipSections"
+          empty-text="暂无装备"
+        />
+
+        <Sp03AscensionPage
+          :active="activePage === 'ascension'"
+          :deity="renderModel.ascensionDeity"
+          :sections="renderModel.ascensionSections"
+        />
+
+        <Sp03StoryPage :active="activePage === 'story'" :sections="renderModel.storySections" />
+      </div>
+
+      <Sp03BottomNav :active-page="activePage" :nav-items="renderModel.navItems" @change-page="onChangePage" />
     </div>
 
     <div v-else class="loading-card">等待 YAML 数据...</div>
@@ -292,365 +98,134 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
-import { getSmartArray, hasArrayContent, hasText, parseAttributeValue } from './services/common';
+import Sp03AscensionPage from './components/sp03/Sp03AscensionPage.vue';
+import Sp03BottomNav from './components/sp03/Sp03BottomNav.vue';
+import Sp03CardPage from './components/sp03/Sp03CardPage.vue';
+import Sp03HomePage from './components/sp03/Sp03HomePage.vue';
+import Sp03StatusPage from './components/sp03/Sp03StatusPage.vue';
+import Sp03StoryPage from './components/sp03/Sp03StoryPage.vue';
+import type { Sp03AttrItem, Sp03NavItem, Sp03PageKey } from './components/sp03/types';
+import { buildSp03RenderModel, type Sp03RenderModel } from './components/sp03/viewModel';
 import { importToMvuVariables, saveToChatWorldbook } from './services/importService';
-import { createParticleEngine, type ParticleEngine } from './services/particleEngine';
 import { applyTheme, resolveTheme } from './services/themeService';
 import { parseCharacterYaml } from './services/yamlParser';
-import type { CharacterData, FriendlyYamlError, ThemeResolved } from './types';
+import type { CharacterData, FriendlyYamlError } from './types';
 
-type TabKey = 'profile' | 'skills' | 'equipment' | 'inventory' | 'divinity' | 'backstory';
-
-type ViewTab = {
-  key: TabKey;
-  label: string;
-};
-
-type ItemObject = Record<string, any>;
-
-const tabOrder: ViewTab[] = [
-  { key: 'profile', label: '档案' },
-  { key: 'skills', label: '技能' },
-  { key: 'equipment', label: '装备' },
-  { key: 'inventory', label: '物品' },
-  { key: 'divinity', label: '登神长阶' },
-  { key: 'backstory', label: '背景故事' },
-];
-
-const sheetData = ref<CharacterData | null>(null);
+const rootRef = ref<HTMLElement | null>(null);
 const parseError = ref<FriendlyYamlError | null>(null);
+const sheetData = ref<CharacterData | null>(null);
+const renderModel = ref<Sp03RenderModel | null>(null);
 const originalYamlText = ref('');
-const theme = ref<ThemeResolved | null>(null);
-const activeTab = ref<TabKey>('profile');
 
-const canvasRef = ref<HTMLCanvasElement | null>(null);
-const bgLayerRef = ref<HTMLElement | null>(null);
-let engine: ParticleEngine | null = null;
+const activePage = ref<Sp03PageKey>('home');
+const activeAttr = ref<Sp03AttrItem['flagKey'] | null>(null);
 
-const showImportMenu = ref(false);
-const importing = ref(false);
-const importButtonText = ref('📥');
+const worldbookBtnText = ref('💾');
+const mvuBtnText = ref('📥');
+const importingWorldbook = ref(false);
+const importingMvu = ref(false);
 
-const parseErrorReason = computed(() => {
-  const message = String(parseError.value?.message || '').toLowerCase();
+const bgImageUrl = ref('');
+const bgVisible = ref(false);
 
-  if (message.includes('indent')) {
-    return '这一行的前置空格层级不对（缩进错误）';
-  }
-  if (message.includes('mapping')) {
-    return '“键: 值”的格式有问题（通常是冒号或内容写法不对）';
-  }
-  if (message.includes('unexpected') || message.includes('end of the stream')) {
-    return '内容可能缺少引号、括号，或上一行没有正确结束。';
-  }
-
-  return '格式不符合要求，请按定位行号检查';
-});
-
-const parseErrorTips = computed(() => [
-  '1. 先看这行里小箭头 ^ 指着哪里，就改那里',
-  '2. 看"键: 值"的格式有沒有问题（通常是多了个冒号或内容写法不对）',
-  '3. 看这一行开头前面的空格，尽量和附近长得像的行保持一样多（缩进错误）',
-  '4. 内容可能缺少引号、括号，或上一行没有正确结束',
-]);
-
-const attributeLabelMap: Record<string, string> = {
-  力量: '力',
-  敏捷: '敏',
-  体质: '体',
-  智力: '智',
-  精神: '精',
+const npcBackgroundMap: Record<string, string> = {
+  幽露: 'https://files.catbox.moe/ba1eoi.png',
+  仲夏夜之梦: 'https://files.catbox.moe/x3oecs.png',
+  NPC03: 'NPC03.png',
 };
 
-const tierNumber = computed(() => theme.value?.tier ?? 1);
-const wrapperClasses = computed(() => ({
-  'card-wrapper': true,
-  [`tier-${tierNumber.value}`]: true,
-  'high-tier': tierNumber.value >= 5,
+const bgCharStyle = computed(() => ({
+  backgroundImage: bgImageUrl.value ? `url('${bgImageUrl.value}')` : 'none',
+  opacity: bgVisible.value ? '1' : '0',
 }));
 
-function pickField(source: unknown, ...keys: string[]): unknown {
-  if (!source || typeof source !== 'object') return undefined;
-  const obj = source as Record<string, unknown>;
-  for (const key of keys) {
-    const value = obj[key];
-    if (value !== undefined && value !== null) return value;
-  }
-  return undefined;
+const activeAttrDetail = computed(() => {
+  if (!renderModel.value || !activeAttr.value) return '';
+  const found = renderModel.value.attrs.find((attr: Sp03AttrItem) => attr.flagKey === activeAttr.value);
+  if (!found) return '';
+  return `${found.key}: ${found.raw}`;
+});
+
+watch(
+  () => renderModel.value?.navItems,
+  (nav: Sp03NavItem[] | undefined) => {
+    if (!nav) return;
+    const current = nav.find((item: Sp03NavItem) => item.key === activePage.value);
+    if (current?.visible) return;
+
+    const fallback =
+      nav.find((item: Sp03NavItem) => item.key === 'home' && item.visible) ||
+      nav.find((item: Sp03NavItem) => item.visible);
+    if (fallback) activePage.value = fallback.key;
+    else activePage.value = 'home';
+  },
+  { deep: true },
+);
+
+function onChangePage(page: Sp03PageKey) {
+  if (!renderModel.value) return;
+  const target = renderModel.value.navItems.find((item: Sp03NavItem) => item.key === page);
+  if (!target?.visible) return;
+  activePage.value = page;
 }
 
-const nameText = computed(() => String(pickField(sheetData.value, '姓名') || 'Unknown'));
-const levelText = computed(() => String(pickField(sheetData.value, '等级', '等级') ?? '?'));
-const raceText = computed(() => String(pickField(sheetData.value, '种族', '种族') || '其他'));
-const tierText = computed(() => String(pickField(sheetData.value, '生命层级', '生命层级') || 'Unknown'));
+function onSelectAttr(flagKey: Sp03AttrItem['flagKey']) {
+  activeAttr.value = activeAttr.value === flagKey ? null : flagKey;
+}
 
-const identityText = computed(() => getSmartArray(pickField(sheetData.value, '身份')).join(' / ') || '-');
-const classText = computed(() => getSmartArray(pickField(sheetData.value, '职业', '职业')).join(' / ') || '-');
+function flashButton(target: 'worldbook' | 'mvu', state: '⏳' | '✅' | '❌', delay = 1200) {
+  const isWorldbook = target === 'worldbook';
+  if (isWorldbook) worldbookBtnText.value = state;
+  else mvuBtnText.value = state;
 
-const personalityText = computed(() => {
-  const val = pickField(sheetData.value, '性格');
-  if (!val) return '';
-  return Array.isArray(val) ? val.join('，') : String(val);
-});
+  if (state !== '⏳') {
+    setTimeout(() => {
+      if (isWorldbook) worldbookBtnText.value = '💾';
+      else mvuBtnText.value = '📥';
+    }, delay);
+  }
+}
 
-const likesText = computed(() => {
-  const tags = getSmartArray(pickField(sheetData.value, '喜爱', '喜爱'))
-    .map(tag => tag.trim().replace(/。+$/g, '').trim())
-    .filter(Boolean);
-  return tags.join('，');
-});
+function readQuoteFromMvu(charName: string): string | null {
+  try {
+    const mvuApi = (window as any).Mvu || (window.parent as any)?.Mvu;
+    if (!mvuApi || typeof mvuApi.getMvuData !== 'function') return null;
 
-const appearanceText = computed(() => String(pickField(sheetData.value, '外貌特质', '外貌特质') || '').trim());
-const attireText = computed(() => String(pickField(sheetData.value, '衣物装饰', '衣物装饰') || '').trim());
-const backstoryText = computed(() => String(pickField(sheetData.value, '背景故事') || '').trim());
+    const mvuResult = mvuApi.getMvuData({ type: 'message', message_id: 'latest' });
+    const xinlihua = mvuResult?.stat_data?.命定系统?.关系列表?.[charName]?.心里话;
+    if (xinlihua && String(xinlihua).trim()) return String(xinlihua).trim();
+    return null;
+  } catch (err) {
+    console.warn('[SP03 Viewer] 读取 MVU 心里话失败:', err);
+    return null;
+  }
+}
 
-const attributeFormulaState = ref<Record<string, boolean>>({});
-
-function parseAttributeDisplay(rawValue: unknown): { total: string; formula: string } {
-  if (rawValue === undefined || rawValue === null) return { total: '0', formula: '' };
-
-  const text = String(rawValue).trim();
-  if (!text) return { total: '0', formula: '' };
-
-  if (!text.includes('=')) {
-    return { total: String(parseAttributeValue(text)), formula: '' };
+function updateBackgroundImage(charName: string) {
+  if (!charName) {
+    bgImageUrl.value = '';
+    bgVisible.value = false;
+    return;
   }
 
-  const parts = text.split('=');
-  const formula = parts.slice(0, -1).join('=').trim();
-  const totalPart = parts[parts.length - 1]?.trim() || '';
+  const mapped = npcBackgroundMap[charName];
+  if (mapped) {
+    bgImageUrl.value = mapped;
+    bgVisible.value = true;
+    return;
+  }
 
-  return {
-    total: totalPart || String(parseAttributeValue(text)),
-    formula,
+  const fallback = `${charName}.png`;
+  bgImageUrl.value = fallback;
+  bgVisible.value = true;
+
+  const testImg = new Image();
+  testImg.onerror = () => {
+    bgVisible.value = false;
   };
-}
-
-const attributeAliasMap: Record<string, string[]> = {
-  力量: ['力量'],
-  敏捷: ['敏捷'],
-  体质: ['体质', '体质'],
-  智力: ['智力'],
-  精神: ['精神'],
-};
-
-function getAttributeRawValue(attrObj: Record<string, unknown>, key: string): unknown {
-  const aliases = attributeAliasMap[key] || [key];
-  for (const alias of aliases) {
-    const value = attrObj[alias];
-    if (value !== undefined && value !== null) return value;
-  }
-  return undefined;
-}
-
-const attributes = computed(() => {
-  const attrObj = (pickField(sheetData.value, '属性', '属性') || {}) as Record<string, unknown>;
-  return ['力量', '敏捷', '体质', '智力', '精神'].map(key => {
-    const parsed = parseAttributeDisplay(getAttributeRawValue(attrObj, key));
-    return {
-      key,
-      short: attributeLabelMap[key] || key,
-      total: parsed.total,
-      formula: parsed.formula,
-      showFormula: !!parsed.formula && !!attributeFormulaState.value[key],
-    };
-  });
-});
-
-function toggleAttributeFormula(key: string) {
-  const attrObj = (pickField(sheetData.value, '属性', '属性') || {}) as Record<string, unknown>;
-  const parsed = parseAttributeDisplay(getAttributeRawValue(attrObj, key));
-  if (!parsed.formula) return;
-
-  attributeFormulaState.value = {
-    ...attributeFormulaState.value,
-    [key]: !attributeFormulaState.value[key],
-  };
-}
-
-function asObjectArray(input: unknown): ItemObject[] {
-  if (!Array.isArray(input)) return [];
-  return input.filter(item => item && typeof item === 'object') as ItemObject[];
-}
-
-function textFromUnknown(value: unknown): string {
-  if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) {
-    return value
-      .map(v => textFromUnknown(v))
-      .filter(Boolean)
-      .join(' / ');
-  }
-  if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .map(([key, val]) => {
-        const content = textFromUnknown(val);
-        return content ? `${key}: ${content}` : '';
-      })
-      .filter(Boolean);
-    return entries.join('； ');
-  }
-  return String(value);
-}
-
-function itemName(item: ItemObject): string {
-  return textFromUnknown(item?.名称) || '未命名';
-}
-
-function itemQuality(item: ItemObject): string {
-  return textFromUnknown(item?.品质 || item?.稀有度);
-}
-
-function qualityClass(item: ItemObject): string {
-  const quality = itemQuality(item).toLowerCase();
-  if (!quality) return '';
-
-  if (quality.includes('神话') || quality.includes('myth')) return 'quality-mythic';
-  if (quality.includes('传说') || quality.includes('legend')) return 'quality-legendary';
-  if (quality.includes('史诗') || quality.includes('epic')) return 'quality-epic';
-  if (quality.includes('稀有') || quality.includes('rare')) return 'quality-rare';
-  if (
-    quality.includes('优良') ||
-    quality.includes('优秀') ||
-    quality.includes('精良') ||
-    quality.includes('uncommon')
-  ) {
-    return 'quality-uncommon';
-  }
-  if (quality.includes('普通') || quality.includes('common')) return 'quality-common';
-
-  return '';
-}
-
-function itemType(item: ItemObject): string {
-  return textFromUnknown(item?.类型 || item?.分类);
-}
-
-function itemDescription(item: ItemObject): string {
-  return textFromUnknown(item?.描述);
-}
-
-function itemEffect(item: ItemObject): string {
-  return textFromUnknown(item?.效果) || '无';
-}
-
-function itemEffectOrDescription(item: ItemObject): string {
-  const effect = itemEffect(item);
-  if (effect && effect !== '无') return effect;
-  return itemDescription(item) || '无';
-}
-
-function itemTags(item: ItemObject): string[] {
-  return getSmartArray(item?.标签);
-}
-
-function itemCost(item: ItemObject): string {
-  const fromArray = getSmartArray(item?.消耗).join(' / ');
-  if (fromArray) return fromArray;
-  return textFromUnknown(item?.消耗);
-}
-
-function lawPassive(item: ItemObject): string {
-  return textFromUnknown(item?.被动效果);
-}
-
-function lawActive(item: ItemObject): string {
-  return textFromUnknown(item?.主动效果);
-}
-
-const skills = computed(() => asObjectArray(sheetData.value?.技能));
-const equipments = computed(() => asObjectArray(sheetData.value?.装备));
-
-const inventorySections = computed(() => {
-  const all = [
-    { key: 'props', title: '道具', items: asObjectArray(sheetData.value?.道具) },
-    { key: 'special', title: '特殊物品', items: asObjectArray(sheetData.value?.特殊物品) },
-    { key: 'items', title: '物品', items: asObjectArray(sheetData.value?.物品) },
-  ];
-  return all.filter(section => section.items.length > 0);
-});
-
-const divinityRoot = computed(() => {
-  const raw = sheetData.value?.登神长阶;
-  if (raw && typeof raw === 'object') return raw as Record<string, unknown>;
-  return {} as Record<string, unknown>;
-});
-
-const divinityGodTitle = computed(() => {
-  const fromRoot = textFromUnknown(divinityRoot.value?.神位);
-  if (hasText(fromRoot)) return fromRoot;
-  const fromTop = textFromUnknown(sheetData.value?.神位);
-  return hasText(fromTop) ? fromTop : '';
-});
-
-const divinityKingdom = computed(() => {
-  const raw = (divinityRoot.value?.神国 || sheetData.value?.神国) as unknown;
-  if (!raw || typeof raw !== 'object') return null;
-  const obj = raw as Record<string, unknown>;
-  const name = textFromUnknown(obj?.名称);
-  const description = textFromUnknown(obj?.描述);
-  if (!hasText(name) && !hasText(description)) return null;
-  return {
-    name: name || '神国',
-    description,
-  };
-});
-
-const divinityElements = computed(() => asObjectArray(divinityRoot.value?.要素 || sheetData.value?.要素));
-const divinityPowers = computed(() => asObjectArray(divinityRoot.value?.权能 || sheetData.value?.权能));
-const divinityLaws = computed(() => asObjectArray(divinityRoot.value?.法则 || sheetData.value?.法则));
-
-const hasInventory = computed(() => inventorySections.value.length > 0);
-const hasDivinity = computed(() => {
-  return (
-    hasText(divinityGodTitle.value) ||
-    !!divinityKingdom.value ||
-    hasArrayContent(divinityElements.value) ||
-    hasArrayContent(divinityPowers.value) ||
-    hasArrayContent(divinityLaws.value)
-  );
-});
-
-const visibleTabs = computed<ViewTab[]>(() => {
-  return tabOrder.filter(tab => {
-    if (tab.key === 'profile') return true;
-    if (tab.key === 'skills') return skills.value.length > 0;
-    if (tab.key === 'equipment') return equipments.value.length > 0;
-    if (tab.key === 'inventory') return hasInventory.value;
-    if (tab.key === 'divinity') return hasDivinity.value;
-    if (tab.key === 'backstory') return hasText(backstoryText.value);
-    return false;
-  });
-});
-
-watchEffect(() => {
-  if (!visibleTabs.value.some(tab => tab.key === activeTab.value)) {
-    activeTab.value = visibleTabs.value[0]?.key || 'profile';
-  }
-});
-
-function detectIOSSafari(): boolean {
-  const ua = navigator.userAgent || '';
-  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
-  return isIOS && isSafari;
-}
-
-function setupParticleEngine() {
-  if (!canvasRef.value || !bgLayerRef.value || !theme.value) return;
-  engine?.destroy();
-  engine = createParticleEngine({
-    canvas: canvasRef.value,
-    host: bgLayerRef.value,
-    tier: theme.value.tier,
-    colorHex: theme.value.tierHex,
-    isIOSSafari: detectIOSSafari(),
-  });
-  engine.start();
+  testImg.src = fallback;
 }
 
 function initFromYaml() {
@@ -671,104 +246,605 @@ function initFromYaml() {
 
   parseError.value = null;
   sheetData.value = parsed.data;
-  theme.value = resolveTheme(parsed.data);
-  applyTheme(theme.value);
 
-  nextTick(() => setupParticleEngine());
-}
+  const quoteFromMvu = readQuoteFromMvu(String(parsed.data.姓名 || 'Unknown'));
+  renderModel.value = buildSp03RenderModel(parsed.data, quoteFromMvu || undefined);
 
-function toggleImportMenu() {
-  showImportMenu.value = !showImportMenu.value;
-}
+  activePage.value = 'home';
+  activeAttr.value = null;
 
-function closeImportMenu() {
-  showImportMenu.value = false;
-}
+  updateBackgroundImage(String(parsed.data.姓名 || 'Unknown'));
 
-function flashImportButton(temp: string, duration = 1200) {
-  const old = importButtonText.value;
-  importButtonText.value = temp;
-  setTimeout(() => {
-    importButtonText.value = old;
-  }, duration);
-}
-
-async function onImportMvu() {
-  if (!sheetData.value || importing.value) return;
-  importing.value = true;
-  closeImportMenu();
-
-  try {
-    const ok = window.confirm(
-      `确定要将角色 "${sheetData.value.姓名 || 'Unknown'}" 导入到 MVU 变量系统(命定系统.关系列表)吗？\n如果已存在同名角色，将会覆盖其数据。`,
-    );
-    if (!ok) return;
-
-    importButtonText.value = '⏳';
-    await importToMvuVariables(sheetData.value);
-    flashImportButton('✅', 1600);
-  } catch (err: any) {
-    console.error('MVU Import Error:', err);
-    flashImportButton('❌', 1800);
-    window.alert(`导入失败: ${err?.message || String(err)}`);
-  } finally {
-    importing.value = false;
-  }
+  const theme = resolveTheme(parsed.data);
+  if (rootRef.value) applyTheme(theme, rootRef.value);
 }
 
 async function onImportWorldbook() {
-  if (!sheetData.value || importing.value) return;
-  importing.value = true;
-  closeImportMenu();
+  if (!sheetData.value || importingWorldbook.value) return;
+  importingWorldbook.value = true;
 
   try {
-    importButtonText.value = '⏳';
+    flashButton('worldbook', '⏳');
     await saveToChatWorldbook(sheetData.value, originalYamlText.value);
-    flashImportButton('✅', 1200);
+    flashButton('worldbook', '✅');
   } catch (err: any) {
     console.error('Worldbook Save Error:', err);
-    flashImportButton('❌', 1800);
+    flashButton('worldbook', '❌', 1800);
     window.alert(`保存失败: ${err?.message || String(err)}`);
   } finally {
-    importing.value = false;
+    importingWorldbook.value = false;
   }
 }
 
-function onDocumentClick() {
-  if (showImportMenu.value) closeImportMenu();
-}
+async function onImportMvu() {
+  if (!sheetData.value || importingMvu.value) return;
 
-function onKeydown(ev: KeyboardEvent) {
-  if (ev.key === 'Escape') closeImportMenu();
+  const ok = window.confirm(
+    `确定要将角色 "${sheetData.value.姓名 || 'Unknown'}" 导入到 MVU 变量系统(命定系统.关系列表)吗？\n如果已存在同名角色，将会覆盖其数据。`,
+  );
+  if (!ok) return;
+
+  importingMvu.value = true;
+  try {
+    flashButton('mvu', '⏳');
+    await importToMvuVariables(sheetData.value);
+    flashButton('mvu', '✅', 1600);
+  } catch (err: any) {
+    console.error('MVU Import Error:', err);
+    flashButton('mvu', '❌', 1800);
+    window.alert(`导入失败: ${err?.message || String(err)}`);
+  } finally {
+    importingMvu.value = false;
+  }
 }
 
 onMounted(() => {
   initFromYaml();
-  document.addEventListener('click', onDocumentClick);
-  document.addEventListener('keydown', onKeydown);
-});
-
-onBeforeUnmount(() => {
-  engine?.destroy();
-  engine = null;
-  document.removeEventListener('click', onDocumentClick);
-  document.removeEventListener('keydown', onKeydown);
 });
 </script>
 
-<style scoped>
-:root {
-  --race-color: #ffffff;
-  --race-color-rgb: 255, 255, 255;
-  --tier-color: #808080;
-  --tier-color-rgb: 128, 128, 128;
+<style>
+#char-showcase-root {
+  --c-hp: #ff4d4d;
+  --c-en: #3399ff;
+  --c-sp: #f39c12;
+  --c-gold: #e6b800;
+  --c-bg-dark: #0a0a0c;
+  --c-panel: rgba(15, 15, 20, 0.95);
+  --c-text: #f0f0f0;
+  --c-text-muted: #888;
+
+  --c-legend: #ffca28;
+  --c-epic: #d633ff;
+  --c-rare: #3399ff;
+  --c-power: #ff4d4d;
+  --c-mythic: #ffd700;
+  --c-divine: #00ffff;
+  --c-uncommon: #50c878;
+
+  --f-serif: Georgia, 'Times New Roman', serif;
+  --f-sans: system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+  --f-mono: 'Courier New', monospace;
+
+  --nav-height: 60px;
+
+  box-sizing: border-box;
+  font-family: var(--f-sans);
+  color: var(--c-text);
+
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  aspect-ratio: 3 / 4;
+  margin: 0 auto;
+  background: var(--c-bg-dark);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+#char-showcase-root * {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#char-showcase-root ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+#char-showcase-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+#char-showcase-root ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+#char-showcase-root .bg-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  transition: opacity 0.4s ease;
+  border-radius: 8px;
+}
+
+#char-showcase-root #bg-base {
+  background: radial-gradient(circle at 50% 30%, #1f222e 0%, #0a0a0c 70%);
+  background-image:
+    radial-gradient(circle at 50% 30%, #1f222e 0%, #0a0a0c 70%),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.02) 0px,
+      rgba(255, 255, 255, 0.02) 1px,
+      transparent 1px,
+      transparent 10px
+    );
+  z-index: 1;
+}
+
+#char-showcase-root #bg-char {
+  background-size: cover;
+  background-position: center top;
+  z-index: 2;
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
+#char-showcase-root.mode-details #bg-char {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#char-showcase-root #content-area {
+  position: relative;
+  flex: 1;
+  z-index: 10;
+  overflow: hidden;
+}
+
+#char-showcase-root .page {
+  display: none;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+#char-showcase-root .page.active {
+  display: block;
+}
+
+#char-showcase-root #page-status,
+#char-showcase-root #page-skill,
+#char-showcase-root #page-equip,
+#char-showcase-root #page-ascension,
+#char-showcase-root #page-story {
+  background: rgba(10, 10, 12, 0.88);
+}
+
+#char-showcase-root #page-home.active {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-bottom: 0;
+}
+
+#char-showcase-root .hud-container {
+  padding: 15px 20px 20px;
+  background: linear-gradient(to top, rgba(10, 10, 12, 0.95) 0%, rgba(10, 10, 12, 0.7) 50%, transparent 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#char-showcase-root .char-header {
+  text-align: center;
+  margin-bottom: 10px;
+}
+#char-showcase-root .char-name {
+  font-family: var(--f-serif);
+  font-size: 2.8rem;
+  color: #fff;
+  margin: 0;
+  text-shadow: 0 4px 15px rgba(0, 0, 0, 1);
+  letter-spacing: 2px;
+  line-height: 1.2;
+}
+#char-showcase-root .char-info {
+  color: var(--c-gold);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: bold;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+#char-showcase-root .quotes-area {
+  width: 100%;
+  max-width: 400px;
+  min-height: 40px;
+  border: 1px dashed rgba(255, 215, 64, 0.3);
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #666;
+  font-style: italic;
+  margin-bottom: 15px;
+  backdrop-filter: blur(5px);
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+#char-showcase-root .status-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+}
+
+#char-showcase-root .radar-wrapper {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  margin: 10px 0;
+}
+#char-showcase-root .radar-grid {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.1);
+}
+#char-showcase-root .radar-axis {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+#char-showcase-root .radar-shape {
+  fill: rgba(255, 215, 64, 0.2);
+  stroke: var(--c-gold);
+  stroke-width: 2;
+}
+
+#char-showcase-root .attr-flag {
+  position: absolute;
+  background: rgba(20, 20, 20, 0.9);
+  border: 1px solid var(--c-gold);
+  color: #fff;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 20;
+  white-space: nowrap;
+  transition: all 0.2s;
+  max-width: 80px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#char-showcase-root .attr-flag.active {
+  background: var(--c-gold);
+  color: #000;
+  box-shadow: 0 0 10px var(--c-gold);
+}
+
+#char-showcase-root .attr-detail-box {
+  margin-top: -10px;
+  margin-bottom: 10px;
+  min-height: 24px;
+  text-align: center;
+  color: var(--c-gold);
+  font-family: var(--f-mono);
+  font-size: 0.9rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 215, 64, 0.2);
+  padding: 8px;
+  border-radius: 4px;
+  width: 90%;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+#char-showcase-root .attr-detail-box.visible {
+  opacity: 1;
+}
+
+#char-showcase-root .flag-str {
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+#char-showcase-root .flag-agi {
+  top: 60px;
+  right: -15px;
+}
+#char-showcase-root .flag-spr {
+  top: 60px;
+  left: -15px;
+}
+#char-showcase-root .flag-con {
+  bottom: 30px;
+  right: 0;
+}
+#char-showcase-root .flag-int {
+  bottom: 30px;
+  left: 0;
+}
+
+#char-showcase-root .meta-block {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 20px;
+}
+#char-showcase-root .meta-line {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  font-size: 0.95rem;
+}
+#char-showcase-root .meta-line:last-child {
+  border-bottom: none;
+}
+#char-showcase-root .meta-label {
+  color: var(--c-gold);
+}
+#char-showcase-root .meta-data {
+  color: #eee;
+  text-align: right;
+  max-width: 60%;
+  word-break: break-word;
+}
+
+#char-showcase-root .card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-left: 2px solid #555;
+  padding: 16px;
+  margin-bottom: 15px;
+  border-radius: 4px;
+}
+#char-showcase-root .card.legend {
+  border-left-color: var(--c-legend);
+}
+#char-showcase-root .card.epic {
+  border-left-color: var(--c-epic);
+}
+#char-showcase-root .card.rare {
+  border-left-color: var(--c-rare);
+}
+#char-showcase-root .card.power {
+  border-left-color: var(--c-power);
+}
+#char-showcase-root .card.mythic {
+  border-left-color: var(--c-mythic);
+}
+#char-showcase-root .card.divine {
+  border-left-color: var(--c-divine);
+}
+#char-showcase-root .card.uncommon {
+  border-left-color: var(--c-uncommon);
+}
+
+#char-showcase-root .card-header {
+  margin-bottom: 10px;
+}
+#char-showcase-root .card-title {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #fff;
+}
+#char-showcase-root .prefix {
+  margin-right: 5px;
+  font-weight: bold;
+}
+#char-showcase-root .prefix.legend {
+  color: var(--c-legend);
+}
+#char-showcase-root .prefix.epic {
+  color: var(--c-epic);
+}
+#char-showcase-root .prefix.rare {
+  color: var(--c-rare);
+}
+#char-showcase-root .prefix.power {
+  color: var(--c-power);
+}
+#char-showcase-root .prefix.mythic {
+  color: var(--c-mythic);
+}
+#char-showcase-root .prefix.divine {
+  color: var(--c-divine);
+}
+#char-showcase-root .prefix.uncommon {
+  color: var(--c-uncommon);
+}
+
+#char-showcase-root .card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+#char-showcase-root .tag {
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #bbb;
+}
+#char-showcase-root .tag.cost {
+  color: #ff8a80;
+  border-color: #ff8a80;
+}
+
+#char-showcase-root .card-body,
+#char-showcase-root .card-flavor,
+#char-showcase-root .profile-content p {
+  white-space: pre-line;
+}
+
+#char-showcase-root .card-body {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #ddd;
+  margin-bottom: 8px;
+}
+#char-showcase-root .card-body p {
+  margin: 4px 0;
+}
+#char-showcase-root .card-flavor {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: #777;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
+}
+
+#char-showcase-root .section-title {
+  color: var(--c-gold);
+  font-family: var(--f-serif);
+  font-size: 1.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+  margin-top: 0;
+}
+
+#char-showcase-root .sub-section-title {
+  color: var(--c-gold);
+  font-family: var(--f-serif);
+  font-size: 1.2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
+  margin-top: 25px;
+  margin-bottom: 15px;
+}
+
+#char-showcase-root .profile-content {
+  line-height: 1.6;
+  color: #ccc;
+}
+#char-showcase-root .profile-content strong {
+  color: var(--c-gold);
+  display: block;
+  margin-top: 15px;
+  margin-bottom: 5px;
+}
+#char-showcase-root .profile-content p {
+  margin: 0 0 18px 0;
+  line-height: 1.8;
+  text-align: left;
+  word-break: break-word;
+}
+
+#char-showcase-root .divinity-deity {
+  text-align: center;
+  font-family: var(--f-serif);
+  font-size: 1.6rem;
+  color: var(--c-gold);
+  text-shadow: 0 0 10px rgba(230, 184, 0, 0.5);
+  margin-bottom: 15px;
+}
+
+#char-showcase-root #bottom-nav {
+  height: var(--nav-height);
+  flex-shrink: 0;
+  background: #0f0f12;
+  border-top: 1px solid #222;
+  display: flex;
+  z-index: 50;
+}
+#char-showcase-root .nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  cursor: pointer;
+  font-size: 0.7rem;
+  gap: 4px;
+  transition: all 0.2s;
+  background: none;
+  border: none;
+  padding: 0;
+}
+#char-showcase-root .nav-icon {
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  mask-size: contain;
+  -webkit-mask-size: contain;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-position: center;
+}
+#char-showcase-root .nav-item.active {
+  color: var(--c-gold);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+#char-showcase-root .icon-home {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z'/%3E%3C/svg%3E");
+}
+#char-showcase-root .icon-stat {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z'/%3E%3C/svg%3E");
+}
+#char-showcase-root .icon-sword {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M14.5 17.06c2.47-.36 4.67-1.92 5.76-4.06-1.09-2.14-3.29-3.7-5.76-4.06V7.24c3.42.45 6.35 2.72 7.5 5.76-1.15 3.04-4.08 5.31-7.5 5.76v-1.7zm-5-8.12c-2.47.36-4.67 1.92-5.76 4.06 1.09 2.14 3.29 3.7 5.76 4.06v1.7c-3.42-.45-6.35-2.72-7.5-5.76 1.15-3.04 4.08-5.31 7.5-5.76v1.7z'/%3E%3C/svg%3E");
+}
+#char-showcase-root .icon-bag {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M18 6h-2c0-2.21-1.79-4-4-4S8 3.79 8 6H6c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6-2c1.1 0 2 .9 2 2h-4c0-1.1.9-2 2-2zm6 16H6V8h12v12z'/%3E%3C/svg%3E");
+}
+#char-showcase-root .icon-star {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z'/%3E%3C/svg%3E");
+}
+#char-showcase-root .icon-book {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z'/%3E%3C/svg%3E");
+}
+
+#char-showcase-root .action-buttons {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  gap: 6px;
+  z-index: 60;
+}
+#char-showcase-root .action-btn {
+  background: rgba(20, 20, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+#char-showcase-root .action-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+#char-showcase-root .empty-tip {
+  text-align: center;
+  color: #666;
+  padding: 20px;
 }
 
 .viewer-root {
-  min-height: 100vh;
-  padding: 24px 12px 48px;
-  color: #f0f0f0;
-  font-family: 'Noto Sans SC', sans-serif;
+  padding: 6px;
 }
 
 .loading-card,
@@ -779,22 +855,35 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.15);
   padding: 16px;
+  color: #f0f0f0;
 }
 
 .error-body {
   margin-top: 10px;
   font-size: 0.9rem;
 }
-
 .yaml-error-row {
   margin-bottom: 6px;
 }
-
+.yaml-fix-box {
+  margin: 12px 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.yaml-fix-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.yaml-fix-list {
+  margin: 0;
+  padding-left: 18px;
+}
 .yaml-error-title {
   font-weight: 700;
   margin-bottom: 6px;
 }
-
 .yaml-error-pre {
   margin: 0;
   padding: 10px;
@@ -804,714 +893,45 @@ onBeforeUnmount(() => {
   white-space: pre;
   overflow: auto;
 }
-
 .yaml-error-pre.alt {
   margin-top: 8px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.yaml-error-details {
-  margin-top: 10px;
-}
-
-.yaml-error-details summary {
-  cursor: pointer;
-  user-select: none;
-}
-
-.card-wrapper {
-  position: relative;
-  width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
-  border-radius: 16px;
-  overflow: visible;
-  z-index: 1;
-}
-
-.card-wrapper::before {
-  content: '';
-  position: absolute;
-  inset: -10px;
-  border-radius: 24px;
-  pointer-events: none;
-  z-index: -1;
-  background:
-    radial-gradient(
-      120% 75% at 50% -5%,
-      rgba(var(--tier-color-rgb), 0.34) 0%,
-      rgba(var(--tier-color-rgb), 0.14) 38%,
-      transparent 74%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(var(--tier-color-rgb), 0.22) 0%,
-      rgba(var(--tier-color-rgb), 0.06) 30%,
-      transparent 62%
-    );
-  box-shadow:
-    0 0 0 1px rgba(var(--tier-color-rgb), 0.2),
-    0 0 24px rgba(var(--tier-color-rgb), 0.22);
-  filter: blur(8px);
-}
-
-.frame-layer {
-  position: absolute;
-  top: -25px;
-  left: -5px;
-  width: calc(100% + 10px);
-  height: calc(100% + 50px);
-  z-index: 4;
-  pointer-events: none;
-  display: none;
-  flex-direction: column;
-}
-
-.frame-layer.show {
-  display: flex;
-}
-
-.frame-svg {
-  width: 100%;
-  fill: none;
-  stroke: var(--tier-color);
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 5px rgba(var(--tier-color-rgb), 0.8));
-}
-
-.frame-top {
-  width: 100%;
-  height: 100px;
-  flex-shrink: 0;
-}
-
-.frame-body {
-  width: 100%;
-  flex-grow: 1;
-}
-
-.card-background-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  border-radius: 16px;
-  overflow: hidden;
-  background: linear-gradient(
-    180deg,
-    rgba(16, 21, 32, 0.9) 0%,
-    rgba(13, 18, 29, 0.92) 56%,
-    rgba(10, 14, 23, 0.94) 100%
-  );
-  border: 1px solid rgba(var(--tier-color-rgb), 0.72);
-  border-top: 2px solid rgba(var(--tier-color-rgb), 1);
-  box-shadow:
-    0 14px 36px rgba(0, 0, 0, 0.78),
-    0 0 28px rgba(var(--tier-color-rgb), 0.24),
-    0 -2px 30px rgba(var(--tier-color-rgb), 0.42),
-    inset 0 0 30px rgba(0, 0, 0, 0.34),
-    inset 0 1px 0 rgba(var(--tier-color-rgb), 0.75);
-  backdrop-filter: blur(2px) saturate(136%);
-  -webkit-backdrop-filter: blur(2px) saturate(136%);
-}
-
-.card-background-layer::before,
-.card-background-layer::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.card-background-layer::before {
-  z-index: 1;
-  mix-blend-mode: screen;
-  background-image:
-    radial-gradient(
-      140% 95% at 50% -8%,
-      rgba(var(--tier-color-rgb), 0.66) 0%,
-      rgba(var(--tier-color-rgb), 0.3) 32%,
-      rgba(var(--tier-color-rgb), 0.08) 58%,
-      transparent 78%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(var(--tier-color-rgb), 0.48) 0%,
-      rgba(var(--tier-color-rgb), 0.16) 26%,
-      transparent 56%
-    );
-}
-
-.card-background-layer::after {
-  z-index: 1;
-  opacity: 0.92;
-  background-image:
-    radial-gradient(circle at 50% 82%, rgba(var(--race-color-rgb), 0.26) 0%, transparent 74%),
-    radial-gradient(circle at 50% 48%, transparent 58%, rgba(0, 0, 0, 0.33) 100%);
-}
-
-#particle-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 2;
-  pointer-events: none;
-  mix-blend-mode: normal;
-  opacity: 0.78;
-}
-
-.card-wrapper.high-tier .card-background-layer {
-  border: 1px solid rgba(var(--tier-color-rgb), 0.95);
-  border-top: 3px solid rgba(var(--tier-color-rgb), 1);
-}
-
-.sheet-content-wrapper {
-  position: relative;
-  z-index: 3;
-}
-
-.sheet-header {
-  padding: 50px 20px 25px;
-  text-align: center;
-  position: relative;
-  margin-bottom: 10px;
-  border-bottom: 1px solid rgba(var(--tier-color-rgb), 0.2);
-  background: radial-gradient(ellipse at 50% 0%, rgba(var(--tier-color-rgb), 0.15) 0%, transparent 80%);
-}
-
-.sheet-header::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: -1;
-  background-image:
-    linear-gradient(90deg, transparent 95%, rgba(var(--tier-color-rgb), 0.1) 95%),
-    linear-gradient(0deg, transparent 95%, rgba(var(--tier-color-rgb), 0.1) 95%);
-  background-size: 40px 40px;
-  mask-image: linear-gradient(to bottom, rgba(148, 148, 148, 0.72) 0%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, rgba(148, 148, 148, 0.72) 0%, transparent 100%);
-}
-
-.level-badge {
-  display: inline-block;
-  padding: 4px 16px;
-  border-radius: 50px;
-  border: 1px solid var(--tier-color);
-  color: var(--tier-color);
-  font-weight: 700;
-  margin-bottom: 15px;
-  background: rgba(0, 0, 0, 0.7);
-  box-shadow: 0 0 15px rgba(var(--tier-color-rgb), 0.2);
-  text-shadow: 0 0 8px rgba(var(--tier-color-rgb), 0.6);
-}
-
-.char-name {
-  margin: 0 0 10px;
-  font-size: 3rem;
-  letter-spacing: 2px;
-  line-height: 1.08;
-  text-shadow: 0 0 20px rgba(var(--tier-color-rgb), 0.6);
-}
-
-.char-meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
-  font-size: 0.95rem;
-}
-
-.meta-separator,
-.tier-name {
-  color: var(--tier-color);
-}
-
-.sheet-body {
-  padding: 20px 30px 90px;
-}
-
-.attributes-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 30px;
-  --flag-width: 96px;
-  --flag-min-height: 118px;
-  --flag-top-padding: 15px;
-  --flag-bottom-padding: 30px;
-  --flag-name-size: clamp(1rem, calc(var(--flag-width) * 0.2), 1.08rem);
-  --flag-total-size: clamp(2rem, calc(var(--flag-width) * 0.4), 2.45rem);
-  --flag-formula-size: clamp(0.76rem, calc(var(--flag-width) * 0.115), 0.86rem);
-  --flag-total-offset: 0px;
-}
-
-.attribute-item {
-  flex: 0 0 var(--flag-width);
-  width: var(--flag-width);
-  min-width: var(--flag-width);
-  max-width: var(--flag-width);
-  min-height: var(--flag-min-height);
-  box-sizing: border-box;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-top: 2px solid var(--race-color);
-  clip-path: polygon(0% 0%, 100% 0%, 100% 85%, 50% 100%, 0% 85%);
-  padding: var(--flag-top-padding) 5px var(--flag-bottom-padding);
-  text-align: center;
-  cursor: default;
-  transition:
-    transform 0.2s,
-    background 0.2s,
-    border-color 0.2s,
-    box-shadow 0.2s;
-}
-
-.attribute-item.has-formula {
-  cursor: pointer;
-}
-
-.attribute-item:hover {
-  transform: translateY(-3px);
-  background: rgba(var(--race-color-rgb), 0.1);
-  box-shadow: 0 5px 20px rgba(var(--race-color-rgb), 0.15);
-  border-color: rgba(var(--race-color-rgb), 0.4);
-}
-
-.attribute-name {
-  display: block;
-  font-size: var(--flag-name-size);
-  color: #fff;
-  margin-bottom: 6px;
-  font-weight: 700;
-  line-height: 1.05;
-  opacity: 0.96;
-}
-
-.attribute-total {
-  display: block;
-  margin-top: var(--flag-total-offset, 0px);
-  font-family: 'Cinzel', 'Times New Roman', serif;
-  font-size: var(--flag-total-size);
-  line-height: 1;
-  font-weight: 700;
-  text-shadow: 0 2px 15px rgba(var(--race-color-rgb), 0.45);
-}
-
-.attribute-formula {
-  display: none;
-  margin-top: 6px;
-  font-size: var(--flag-formula-size);
-  color: var(--race-color);
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.attribute-item.show-formula .attribute-total {
-  display: none;
-}
-
-.attribute-item.show-formula .attribute-formula {
-  display: block;
-}
-
-.tab-nav {
-  display: flex;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  margin-bottom: 14px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.tab-nav::-webkit-scrollbar {
-  display: none;
-}
-
-.tab-button {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: #9a9a9a;
-  padding: 12px 16px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    color 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.tab-button.active {
-  color: var(--race-color);
-  border-bottom: 2px solid var(--race-color);
-  font-weight: 700;
-}
-.tab-content {
-  display: block;
-}
-
-.profile-grid {
-  display: grid;
-  gap: 8px;
-}
-
-.profile-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  align-items: stretch;
-}
-
-.profile-cell {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.profile-panel {
-  height: 100%;
-  box-sizing: border-box;
-}
-
-.subsection-title {
-  font-size: 1.08rem;
-  margin: 0 0 8px;
-  padding-left: 8px;
-  border-left: 3px solid var(--race-color);
-  color: var(--race-color);
-}
-
-.divinity-main-title {
-  text-align: center;
-  border-left: none;
-  color: var(--tier-color);
-}
-
-.story {
-  white-space: pre-line;
-  line-height: 1.58;
-  margin-bottom: 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  padding: 12px;
-}
-
-.tags-box {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  padding: 10px;
-}
-
-.card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-left: 3px solid var(--race-color);
-  padding: 12px;
-  margin-bottom: 12px;
-  border-radius: 6px;
-}
-
-.divinity-card {
-  border-left-color: var(--tier-color);
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 8px;
-  padding-bottom: 5px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.card-title {
-  margin: 0;
-  font-size: 1.05rem;
-  color: #fff;
-  font-weight: 700;
-}
-
-.card-subtitle {
-  font-size: 0.85rem;
-  color: #bbb;
-}
-
-.card-title.quality-common,
-.card-subtitle.quality-common {
-  color: #c4cad3;
-}
-
-.card-title.quality-uncommon,
-.card-subtitle.quality-uncommon {
-  color: #7be495;
-  text-shadow: 0 0 10px rgba(123, 228, 149, 0.28);
-}
-
-.card-title.quality-rare,
-.card-subtitle.quality-rare {
-  color: #62bbff;
-  text-shadow: 0 0 10px rgba(98, 187, 255, 0.3);
-}
-
-.card-title.quality-epic,
-.card-subtitle.quality-epic {
-  color: #cf95ff;
-  text-shadow: 0 0 10px rgba(207, 149, 255, 0.3);
-}
-
-.card-title.quality-legendary,
-.card-subtitle.quality-legendary {
-  color: #ffc46b;
-  text-shadow: 0 0 10px rgba(255, 196, 107, 0.3);
-}
-
-.card-title.quality-mythic,
-.card-subtitle.quality-mythic {
-  color: #ff78c5;
-  text-shadow: 0 0 10px rgba(255, 120, 197, 0.3);
-}
-
-.card-body p {
-  margin: 5px 0;
-  white-space: pre-line;
-  line-height: 1.5;
-}
-
-.card-label {
-  color: var(--race-color);
-  font-weight: 700;
-  margin-right: 4px;
-}
-
-.card-description {
-  margin-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  padding-top: 8px;
-  opacity: 0.9;
-}
-
-.card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.card-tag {
-  display: inline-block;
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.82rem;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-#import-action-btn {
-  position: absolute;
-  bottom: 15px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(30, 30, 30, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #fff;
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  z-index: 60;
-  font-size: 1.2rem;
-  transition: all 0.2s;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
-}
-
-#import-action-btn:disabled {
-  opacity: 0.7;
-  cursor: wait;
-}
-
-#import-action-btn:hover:not(:disabled) {
-  background: rgba(60, 60, 60, 0.92);
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
-  border-color: #fff;
-}
-
-#import-action-menu {
-  position: absolute;
-  bottom: 55px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(20, 20, 20, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 10px;
-  padding: 6px;
-  z-index: 70;
-  min-width: 190px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: none;
-}
-
-#import-action-menu.show {
-  display: block;
-}
-
-#import-action-menu button {
-  width: 100%;
-  background: transparent;
-  border: 1px solid transparent;
-  color: #eee;
-  padding: 10px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-  text-align: left;
-  font-size: 0.95rem;
-}
-
-#import-action-menu button:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-#import-action-menu button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-@media (min-width: 900px) {
-  .attributes-grid {
-    justify-content: center;
-    gap: 12px;
-    --flag-width: 140px;
-    --flag-min-height: 150px;
-    --flag-top-padding: 20px;
-    --flag-bottom-padding: 38px;
-    --flag-total-offset: 10px;
-  }
-}
-
-@media (max-width: 820px) {
-  .viewer-root {
-    padding: 18px 10px 36px;
+@media (max-width: 480px) {
+  #char-showcase-root {
+    aspect-ratio: 3 / 4.5;
+    --nav-height: 50px;
   }
 
-  .sheet-body {
-    padding: 16px 18px 84px;
-  }
-
-  .sheet-header {
-    padding: 40px 16px 20px;
-  }
-
-  .char-name {
-    font-size: 2.2rem;
+  #char-showcase-root .char-name {
+    font-size: 1.8rem;
     letter-spacing: 1px;
   }
 
-  .tab-button {
-    flex: 0 0 auto;
-    min-width: 82px;
-    padding: 10px 12px;
-  }
-}
-
-@media (max-width: 640px) {
-  .card-wrapper {
-    max-width: 100%;
-    border-radius: 14px;
+  #char-showcase-root .char-info {
+    font-size: 0.75rem;
+    letter-spacing: 1px;
   }
 
-  .card-background-layer {
-    border-radius: 14px;
-  }
-
-  .sheet-header {
-    padding: 34px 12px 16px;
-    margin-bottom: 6px;
-  }
-
-  .level-badge {
-    margin-bottom: 10px;
-    padding: 3px 12px;
-    font-size: 0.9rem;
-  }
-
-  .char-name {
-    font-size: 1.8rem;
+  #char-showcase-root .quotes-area {
+    min-height: 28px;
+    padding: 5px 8px;
+    font-size: 0.75rem;
     margin-bottom: 8px;
+    max-width: 300px;
   }
 
-  .char-meta-row {
-    gap: 6px;
-    font-size: 0.82rem;
+  #char-showcase-root .nav-item {
+    font-size: 0.6rem;
   }
 
-  .sheet-body {
-    padding: 12px 10px 80px;
+  #char-showcase-root .nav-icon {
+    width: 16px;
+    height: 16px;
   }
 
-  .attributes-grid {
-    gap: 8px 10px;
-    margin-bottom: 16px;
-    --flag-width: calc((100% - 20px) / 3);
-    --flag-min-height: calc(var(--flag-width) * 1.18);
-    --flag-top-padding: 12px;
-    --flag-bottom-padding: 26px;
-    --flag-name-size: clamp(0.98rem, calc(var(--flag-width) * 0.16), 1.08rem);
-    --flag-total-size: clamp(2.05rem, calc(var(--flag-width) * 0.34), 2.45rem);
-    --flag-formula-size: clamp(0.72rem, calc(var(--flag-width) * 0.105), 0.82rem);
-  }
-
-  .attribute-item {
-    flex: 0 0 var(--flag-width);
-    width: var(--flag-width);
-    max-width: var(--flag-width);
-    min-width: 0;
-    min-height: var(--flag-min-height);
-    padding: var(--flag-top-padding) 5px var(--flag-bottom-padding);
-  }
-
-  .profile-row {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-
-  .subsection-title {
-    font-size: 1rem;
-  }
-  .story,
-  .card,
-  .tags-box {
-    padding: 10px;
-  }
-
-  #import-action-btn {
-    bottom: 10px;
-    font-size: 1.05rem;
-    padding: 7px 10px;
-  }
-
-  #import-action-menu {
-    bottom: 46px;
-    min-width: 170px;
-  }
-
-  #import-action-menu button {
-    padding: 8px;
-    font-size: 0.9rem;
+  #char-showcase-root #bottom-nav {
+    height: 50px;
   }
 }
 </style>
