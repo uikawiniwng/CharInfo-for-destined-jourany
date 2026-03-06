@@ -153,7 +153,20 @@
                   </div>
                   <p v-if="itemType(item)"><span class="card-label">类型:</span>{{ itemType(item) }}</p>
                   <p v-if="itemCost(item)"><span class="card-label">消耗:</span>{{ itemCost(item) }}</p>
-                  <p><span class="card-label">效果:</span>{{ itemEffect(item) }}</p>
+                  <template v-if="itemEffectEntries(item).length > 0">
+                    <p><span class="card-label">效果:</span></p>
+                    <ul class="effect-list">
+                      <li
+                        v-for="(entry, effectIndex) in itemEffectEntries(item)"
+                        :key="`skill-effect-${index}-${effectIndex}-${entry.name}`"
+                        class="effect-item"
+                      >
+                        <span v-if="!entry.fallback" class="effect-name">{{ entry.name }}</span>
+                        <span class="effect-text">{{ entry.content }}</span>
+                      </li>
+                    </ul>
+                  </template>
+                  <p v-else><span class="card-label">效果:</span>无</p>
                   <p v-if="itemDescription(item)" class="card-description">{{ itemDescription(item) }}</p>
                 </div>
               </article>
@@ -174,7 +187,20 @@
                     </span>
                   </div>
                   <p v-if="itemType(item)"><span class="card-label">类型:</span>{{ itemType(item) }}</p>
-                  <p><span class="card-label">效果:</span>{{ itemEffect(item) }}</p>
+                  <template v-if="itemEffectEntries(item).length > 0">
+                    <p><span class="card-label">效果:</span></p>
+                    <ul class="effect-list">
+                      <li
+                        v-for="(entry, effectIndex) in itemEffectEntries(item)"
+                        :key="`equip-effect-${index}-${effectIndex}-${entry.name}`"
+                        class="effect-item"
+                      >
+                        <span v-if="!entry.fallback" class="effect-name">{{ entry.name }}</span>
+                        <span class="effect-text">{{ entry.content }}</span>
+                      </li>
+                    </ul>
+                  </template>
+                  <p v-else><span class="card-label">效果:</span>无</p>
                   <p v-if="itemDescription(item)" class="card-description">{{ itemDescription(item) }}</p>
                 </div>
               </article>
@@ -201,8 +227,23 @@
                       </span>
                     </div>
                     <p v-if="itemType(item)"><span class="card-label">类型:</span>{{ itemType(item) }}</p>
-                    <p><span class="card-label">效果:</span>{{ itemEffectOrDescription(item) }}</p>
-                    <p v-if="itemDescription(item)" class="card-description">{{ itemDescription(item) }}</p>
+                    <template v-if="itemEffectEntriesOrDescription(item).length > 0">
+                      <p><span class="card-label">效果:</span></p>
+                      <ul class="effect-list">
+                        <li
+                          v-for="(entry, effectIndex) in itemEffectEntriesOrDescription(item)"
+                          :key="`${section.key}-${index}-${effectIndex}-${entry.name}`"
+                          class="effect-item"
+                        >
+                          <span v-if="!entry.fallback" class="effect-name">{{ entry.name }}</span>
+                          <span class="effect-text">{{ entry.content }}</span>
+                        </li>
+                      </ul>
+                    </template>
+                    <p v-else><span class="card-label">效果:</span>无</p>
+                    <p v-if="itemDescription(item) && itemEffectEntries(item).length > 0" class="card-description">
+                      {{ itemDescription(item) }}
+                    </p>
                   </div>
                 </article>
               </template>
@@ -497,6 +538,111 @@ function textFromUnknown(value: unknown): string {
   return String(value);
 }
 
+type EffectEntry = {
+  name: string;
+  content: string;
+  fallback: boolean;
+};
+
+function parseNamedEffectLine(line: string): EffectEntry | null {
+  const normalized = String(line || '').trim();
+  if (!normalized) return null;
+
+  const bracketMatch = normalized.match(/^\[([^\]]+)\]\s*[：:]\s*(.*)$/);
+  if (bracketMatch) {
+    const name = String(bracketMatch[1] || '').trim();
+    const content = String(bracketMatch[2] || '').trim();
+    if (name && content) return { name, content, fallback: false };
+    return null;
+  }
+
+  const splitIndex = normalized.search(/[：:]/);
+  if (splitIndex <= 0) return null;
+
+  const name = normalized.slice(0, splitIndex).trim();
+  const content = normalized.slice(splitIndex + 1).trim();
+  if (!name || !content) return null;
+
+  return { name, content, fallback: false };
+}
+
+function parseEffectTextEntries(raw: string): EffectEntry[] {
+  const text = String(raw || '')
+    .replace(/\r\n/g, '\n')
+    .trim();
+  if (!text) return [];
+
+  const lines = text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  const entries: EffectEntry[] = [];
+  const remains: string[] = [];
+
+  lines.forEach(line => {
+    const named = parseNamedEffectLine(line);
+    if (named) {
+      entries.push(named);
+      return;
+    }
+    remains.push(line);
+  });
+
+  if (entries.length === 0) {
+    return [{ name: '描述', content: text, fallback: true }];
+  }
+
+  if (remains.length > 0) {
+    entries.push({ name: '描述', content: remains.join('\n'), fallback: true });
+  }
+
+  return entries;
+}
+
+function normalizeEffectEntries(value: unknown): EffectEntry[] {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([name, raw]) => {
+        const safeName = String(name || '').trim() || '描述';
+        const content = textFromUnknown(raw).trim();
+        return {
+          name: safeName,
+          content,
+          fallback: safeName === '描述',
+        };
+      })
+      .filter(entry => entry.content.length > 0);
+  }
+
+  return parseEffectTextEntries(textFromUnknown(value));
+}
+
+function formatEffectEntries(entries: EffectEntry[]): string {
+  if (entries.length === 0) return '无';
+  if (entries.length === 1) {
+    const entry = entries[0];
+    return entry.fallback ? entry.content : `${entry.name}: ${entry.content}`;
+  }
+
+  return entries
+    .map(entry => (entry.fallback ? entry.content : `${entry.name}: ${entry.content}`))
+    .join('\n');
+}
+
+function itemEffectEntries(item: ItemObject): EffectEntry[] {
+  return normalizeEffectEntries(item?.效果);
+}
+
+function itemEffectEntriesOrDescription(item: ItemObject): EffectEntry[] {
+  const entries = itemEffectEntries(item);
+  if (entries.length > 0) return entries;
+
+  const description = itemDescription(item);
+  if (!description) return [];
+  return [{ name: '描述', content: description, fallback: true }];
+}
+
 function itemName(item: ItemObject): string {
   return textFromUnknown(item?.名称) || '未命名';
 }
@@ -535,13 +681,11 @@ function itemDescription(item: ItemObject): string {
 }
 
 function itemEffect(item: ItemObject): string {
-  return textFromUnknown(item?.效果) || '无';
+  return formatEffectEntries(itemEffectEntries(item));
 }
 
 function itemEffectOrDescription(item: ItemObject): string {
-  const effect = itemEffect(item);
-  if (effect && effect !== '无') return effect;
-  return itemDescription(item) || '无';
+  return formatEffectEntries(itemEffectEntriesOrDescription(item));
 }
 
 function itemTags(item: ItemObject): string[] {
@@ -762,6 +906,11 @@ onBeforeUnmount(() => {
   --race-color-rgb: 255, 255, 255;
   --tier-color: #808080;
   --tier-color-rgb: 128, 128, 128;
+  --name-font-stack:
+    'Noto Serif SC', 'Source Han Serif SC', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  --name-shadow: rgba(0, 0, 0, 0.58);
+  --name-glow: rgba(var(--tier-color-rgb), 0.12);
+  --tier-label-fg: #f3f6ff;
 }
 
 .viewer-root {
@@ -1011,9 +1160,14 @@ onBeforeUnmount(() => {
 .char-name {
   margin: 0 0 10px;
   font-size: 3rem;
-  letter-spacing: 2px;
+  color: #ffffff;
+  font-family: var(--name-font-stack);
+  font-weight: 700;
+  letter-spacing: 0.25px;
   line-height: 1.08;
-  text-shadow: 0 0 20px rgba(var(--tier-color-rgb), 0.6);
+  text-shadow:
+    0 1px 2px var(--name-shadow),
+    0 0 4px var(--name-glow);
 }
 
 .char-meta-row {
@@ -1021,12 +1175,33 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 10px;
   justify-content: center;
+  align-items: center;
   font-size: 0.95rem;
 }
 
-.meta-separator,
+.meta-separator {
+  color: rgba(242, 247, 255, 0.78);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.86),
+    0 0 3px rgba(var(--tier-color-rgb), 0.22);
+}
+
 .tier-name {
-  color: var(--tier-color);
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--tier-color-rgb), 0.9);
+  color: var(--tier-label-fg);
+  background: linear-gradient(180deg, rgba(8, 10, 16, 0.84) 0%, rgba(10, 12, 18, 0.68) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 1px rgba(0, 0, 0, 0.52),
+    0 0 10px rgba(var(--tier-color-rgb), 0.34);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  font-weight: 700;
+  letter-spacing: 0.12px;
+  line-height: 1.2;
 }
 
 .sheet-body {
@@ -1297,6 +1472,46 @@ onBeforeUnmount(() => {
   margin-right: 4px;
 }
 
+.effect-list {
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.effect-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.effect-name {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--race-color-rgb), 0.5);
+  background: rgba(var(--race-color-rgb), 0.12);
+  color: var(--race-color);
+  font-weight: 700;
+  font-size: 0.78rem;
+  line-height: 1;
+  padding: 3px 8px;
+}
+
+.effect-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-line;
+  line-height: 1.45;
+}
+
 .card-description {
   margin-top: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
@@ -1418,7 +1633,10 @@ onBeforeUnmount(() => {
 
   .char-name {
     font-size: 2.2rem;
-    letter-spacing: 1px;
+    letter-spacing: 0.2px;
+    text-shadow:
+      0 1px 2px var(--name-shadow),
+      0 0 3px rgba(var(--tier-color-rgb), 0.12);
   }
 
   .tab-button {
@@ -1452,11 +1670,23 @@ onBeforeUnmount(() => {
   .char-name {
     font-size: 1.8rem;
     margin-bottom: 8px;
+    letter-spacing: 0.1px;
+    text-shadow:
+      0 1px 2px var(--name-shadow),
+      0 0 2px rgba(var(--tier-color-rgb), 0.1);
   }
 
   .char-meta-row {
     gap: 6px;
     font-size: 0.82rem;
+  }
+
+  .tier-name {
+    padding: 1px 8px;
+    border-width: 1px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 0 5px rgba(var(--tier-color-rgb), 0.16);
   }
 
   .sheet-body {

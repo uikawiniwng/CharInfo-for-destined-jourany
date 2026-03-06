@@ -24,6 +24,57 @@ function ensureArray(val: unknown): string[] {
   return getSmartArray(val);
 }
 
+function parseEffectMap(effectVal: unknown): Record<string, string> {
+  if (effectVal && typeof effectVal === 'object' && !Array.isArray(effectVal)) {
+    const effectObj = effectVal as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(effectObj)
+        .map(([key, value]) => [String(key).trim(), ensureString(value).trim()] as const)
+        .filter(([key, value]) => key.length > 0 && value.length > 0),
+    );
+  }
+
+  const text = ensureString(effectVal).replace(/\r\n/g, '\n').trim();
+  if (!text) return {};
+
+  const lines = text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  const effectMap: Record<string, string> = {};
+  const remains: string[] = [];
+
+  lines.forEach(line => {
+    const bracketMatch = line.match(/^\[([^\]]+)\]\s*[：:]\s*(.*)$/);
+    if (bracketMatch) {
+      const key = String(bracketMatch[1] || '').trim();
+      const value = String(bracketMatch[2] || '').trim();
+      if (key && value) effectMap[key] = value;
+      return;
+    }
+
+    const plainMatch = line.match(/^([^[\]：:]+?)\s*[：:]\s*(.+)$/);
+    if (plainMatch) {
+      const key = String(plainMatch[1] || '').trim();
+      const value = String(plainMatch[2] || '').trim();
+      if (key && value) {
+        effectMap[key] = value;
+        return;
+      }
+    }
+
+    remains.push(line);
+  });
+
+  if (Object.keys(effectMap).length > 0) {
+    if (remains.length > 0) effectMap.描述 = remains.join('\n');
+    return effectMap;
+  }
+
+  return { 描述: text };
+}
+
 function arrayToMap(arr: unknown, type: 'skill' | 'equip' | 'divinity'): Record<string, Record<string, any>> {
   const map: Record<string, Record<string, any>> = {};
   if (!Array.isArray(arr)) return map;
@@ -40,8 +91,7 @@ function arrayToMap(arr: unknown, type: 'skill' | 'equip' | 'divinity'): Record<
     else if (type === 'skill' || type === 'equip') processed.标签 = [];
 
     if (type !== 'divinity') {
-      if (typeof processed.效果 === 'string') processed.效果 = { 描述: processed.效果 };
-      else if (!processed.效果) processed.效果 = {};
+      processed.效果 = parseEffectMap(processed.效果);
     }
 
     if (type === 'equip') {
