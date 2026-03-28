@@ -79,12 +79,28 @@
               v-for="attr in attributes"
               :key="attr.key"
               class="attribute-item"
-              :class="{ 'show-formula': attr.showFormula, 'has-formula': !!attr.formula }"
+              :class="{
+                'show-formula': attr.showFormula,
+                'has-formula': !!attr.formula,
+                'has-warning': attr.isTotalAbnormal || attr.hasFormulaWarning,
+              }"
               @click="toggleAttributeFormula(attr.key)"
             >
               <span class="attribute-name">{{ attr.short }}</span>
-              <span class="attribute-total">{{ attr.total }}</span>
-              <span v-if="attr.formula" class="attribute-formula">{{ attr.formula }}</span>
+              <span class="attribute-total" :class="{ 'is-warning': attr.isTotalAbnormal }">{{ attr.total }}</span>
+              <span v-if="attr.formula" class="attribute-formula">
+                <template v-for="part in attr.formulaParts" :key="`${attr.key}-${part.index}-${part.text}`">
+                  <span v-if="part.index > 0" class="formula-part-separator">+</span>
+                  <span class="formula-part" :class="{ 'formula-part-warning': part.isWarning }">{{ part.text }}</span>
+                </template>
+              </span>
+            </div>
+          </div>
+
+          <div v-if="resourceBoxes.length > 0" class="resource-grid">
+            <div v-for="resource in resourceBoxes" :key="resource.key" class="resource-item">
+              <span class="resource-name">{{ resource.label }}</span>
+              <span class="resource-value">{{ resource.value }}</span>
             </div>
           </div>
 
@@ -335,6 +351,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue';
 
+import { buildAttributeWarningMap } from './services/attributeWarning';
 import { getSmartArray, hasArrayContent, hasText, parseAttributeValue } from './services/common';
 import { importToMvuVariables, saveToChatWorldbook } from './services/importService';
 import { createParticleEngine, type ParticleEngine } from './services/particleEngine';
@@ -350,6 +367,12 @@ type ViewTab = {
 };
 
 type ItemObject = Record<string, any>;
+
+type ResourceBox = {
+  key: 'HP' | 'SP' | 'MP';
+  label: 'HP' | 'SP' | 'MP';
+  value: string;
+};
 
 const tabOrder: ViewTab[] = [
   { key: 'profile', label: '档案' },
@@ -373,22 +396,6 @@ let engine: ParticleEngine | null = null;
 const showImportMenu = ref(false);
 const importing = ref(false);
 const importButtonText = ref('📥');
-
-const parseErrorReason = computed(() => {
-  const message = String(parseError.value?.message || '').toLowerCase();
-
-  if (message.includes('indent')) {
-    return '这一行的前置空格层级不对（缩进错误）';
-  }
-  if (message.includes('mapping')) {
-    return '“键: 值”的格式有问题（通常是冒号或内容写法不对）';
-  }
-  if (message.includes('unexpected') || message.includes('end of the stream')) {
-    return '内容可能缺少引号、括号，或上一行没有正确结束。';
-  }
-
-  return '格式不符合要求，请按定位行号检查';
-});
 
 const parseErrorTips = computed(() => [
   '1. 先看这行里小箭头 ^ 指着哪里，就改那里',
@@ -447,6 +454,39 @@ const appearanceText = computed(() => String(pickField(sheetData.value, '外貌�
 const attireText = computed(() => String(pickField(sheetData.value, '衣物装饰', '衣物装饰') || '').trim());
 const backstoryText = computed(() => String(pickField(sheetData.value, '背景故事') || '').trim());
 
+function textFromUnknown(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .map(v => textFromUnknown(v))
+      .filter(Boolean)
+      .join(' / ');
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([key, val]) => {
+        const content = textFromUnknown(val);
+        return content ? `${key}: ${content}` : '';
+      })
+      .filter(Boolean);
+    return entries.join('； ');
+  }
+  return String(value);
+}
+
+const resourceBoxes = computed<ResourceBox[]>(() => {
+  const resourceObj = (pickField(sheetData.value, '资源', '资源') || {}) as Record<string, unknown>;
+  const resourceEntries: ResourceBox[] = [
+    { key: 'HP', label: 'HP', value: textFromUnknown(resourceObj.HP) },
+    { key: 'SP', label: 'SP', value: textFromUnknown(resourceObj.SP) },
+    { key: 'MP', label: 'MP', value: textFromUnknown(resourceObj.MP) },
+  ];
+
+  return resourceEntries.filter(resource => hasText(resource.value));
+});
+
 const attributeFormulaState = ref<Record<string, boolean>>({});
 
 function parseAttributeDisplay(rawValue: unknown): { total: string; formula: string } {
@@ -488,13 +528,20 @@ function getAttributeRawValue(attrObj: Record<string, unknown>, key: string): un
 
 const attributes = computed(() => {
   const attrObj = (pickField(sheetData.value, '属性', '属性') || {}) as Record<string, unknown>;
+  const warningMap = buildAttributeWarningMap(attrObj, pickField(sheetData.value, '等级'));
+
   return ['力量', '敏捷', '体质', '智力', '精神'].map(key => {
     const parsed = parseAttributeDisplay(getAttributeRawValue(attrObj, key));
+    const warningState = warningMap[key as keyof typeof warningMap];
+
     return {
       key,
       short: attributeLabelMap[key] || key,
       total: parsed.total,
       formula: parsed.formula,
+      formulaParts: warningState?.formulaPartWarnings || [],
+      isTotalAbnormal: !!warningState?.isTotalAbnormal,
+      hasFormulaWarning: !!warningState?.hasFormulaWarning,
       showFormula: !!parsed.formula && !!attributeFormulaState.value[key],
     };
   });
@@ -514,28 +561,6 @@ function toggleAttributeFormula(key: string) {
 function asObjectArray(input: unknown): ItemObject[] {
   if (!Array.isArray(input)) return [];
   return input.filter(item => item && typeof item === 'object') as ItemObject[];
-}
-
-function textFromUnknown(value: unknown): string {
-  if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) {
-    return value
-      .map(v => textFromUnknown(v))
-      .filter(Boolean)
-      .join(' / ');
-  }
-  if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .map(([key, val]) => {
-        const content = textFromUnknown(val);
-        return content ? `${key}: ${content}` : '';
-      })
-      .filter(Boolean);
-    return entries.join('； ');
-  }
-  return String(value);
 }
 
 type EffectEntry = {
@@ -680,10 +705,6 @@ function itemDescription(item: ItemObject): string {
   return textFromUnknown(item?.描述);
 }
 
-function itemEffect(item: ItemObject): string {
-  return formatEffectEntries(itemEffectEntries(item));
-}
-
 function itemEffectOrDescription(item: ItemObject): string {
   return formatEffectEntries(itemEffectEntriesOrDescription(item));
 }
@@ -798,9 +819,13 @@ function setupParticleEngine() {
 }
 
 function initFromYaml() {
-  const yamlNode = document.getElementById('data-source');
-  const yamlText = yamlNode?.textContent?.trim() || '';
+  const scriptElement = document.getElementById('data-source');
+  const yamlText = scriptElement?.textContent?.trim() || '';
+
   originalYamlText.value = yamlText;
+  sheetData.value = null;
+  parseError.value = null;
+  theme.value = null;
 
   if (!yamlText) {
     parseError.value = { message: '未检测到 YAML 数据（#data-source 为空）。' };
@@ -813,7 +838,6 @@ function initFromYaml() {
     return;
   }
 
-  parseError.value = null;
   sheetData.value = parsed.data;
   theme.value = resolveTheme(parsed.data);
   applyTheme(theme.value);
@@ -844,7 +868,7 @@ async function onImportMvu() {
 
   try {
     const ok = window.confirm(
-      `确定要将角色 "${sheetData.value.姓名 || 'Unknown'}" 导入到 MVU 变量系统(命定系统.关系列表)吗？\n如果已存在同名角色，将会覆盖其数据。`,
+      `确定要将角色 "${sheetData.value.姓名 || 'Unknown'}" 导入到 MVU 变量系统(关系列表)吗？\n如果已存在同名角色，将会覆盖其数据。`,
     );
     if (!ok) return;
 
@@ -972,7 +996,7 @@ onBeforeUnmount(() => {
 .card-wrapper {
   position: relative;
   width: 100%;
-  max-width: 900px;
+  max-width: 750px;
   margin: 0 auto;
   border-radius: 16px;
   overflow: visible;
@@ -1213,7 +1237,7 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
-  margin-bottom: 30px;
+  margin-bottom: 18px;
   --flag-width: 96px;
   --flag-min-height: 118px;
   --flag-top-padding: 15px;
@@ -1222,6 +1246,60 @@ onBeforeUnmount(() => {
   --flag-total-size: clamp(2rem, calc(var(--flag-width) * 0.4), 2.45rem);
   --flag-formula-size: clamp(0.76rem, calc(var(--flag-width) * 0.115), 0.86rem);
   --flag-total-offset: 0px;
+}
+
+.resource-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 22px;
+}
+
+.resource-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--race-color-rgb), 0.18);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 18px rgba(var(--tier-color-rgb), 0.1);
+  overflow: hidden;
+}
+
+.resource-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(var(--tier-color-rgb), 0.12) 0%, transparent 100%);
+}
+
+.resource-name,
+.resource-value {
+  position: relative;
+  z-index: 1;
+}
+
+.resource-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.resource-value {
+  font-family: 'Cinzel', 'Times New Roman', serif;
+  font-size: 1.25rem;
+  line-height: 1;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 0 12px rgba(var(--race-color-rgb), 0.25);
 }
 
 .attribute-item {
@@ -1254,6 +1332,11 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.attribute-item.has-warning {
+  border-top-color: #ff7875;
+  box-shadow: 0 0 0 1px rgba(255, 120, 117, 0.16);
+}
+
 .attribute-item:hover {
   transform: translateY(-3px);
   background: rgba(var(--race-color-rgb), 0.1);
@@ -1281,6 +1364,11 @@ onBeforeUnmount(() => {
   text-shadow: 0 2px 15px rgba(var(--race-color-rgb), 0.45);
 }
 
+.attribute-total.is-warning {
+  color: #ff9b9b;
+  text-shadow: 0 0 10px rgba(255, 77, 77, 0.42);
+}
+
 .attribute-formula {
   display: none;
   margin-top: 6px;
@@ -1288,6 +1376,23 @@ onBeforeUnmount(() => {
   color: var(--race-color);
   font-weight: 700;
   line-height: 1.2;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+}
+
+.formula-part {
+  display: inline-block;
+}
+
+.formula-part-separator {
+  display: inline-block;
+  opacity: 0.85;
+}
+
+.formula-part-warning {
+  color: #ff4d4d;
+  text-shadow: 0 0 8px rgba(255, 77, 77, 0.35);
 }
 
 .attribute-item.show-formula .attribute-total {
@@ -1295,7 +1400,7 @@ onBeforeUnmount(() => {
 }
 
 .attribute-item.show-formula .attribute-formula {
-  display: block;
+  display: inline-flex;
 }
 
 .tab-nav {
@@ -1328,6 +1433,7 @@ onBeforeUnmount(() => {
   border-bottom: 2px solid var(--race-color);
   font-weight: 700;
 }
+
 .tab-content {
   display: block;
 }
@@ -1610,11 +1716,11 @@ onBeforeUnmount(() => {
   .attributes-grid {
     justify-content: center;
     gap: 12px;
-    --flag-width: 140px;
-    --flag-min-height: 150px;
-    --flag-top-padding: 20px;
-    --flag-bottom-padding: 38px;
-    --flag-total-offset: 10px;
+    --flag-width: min(140px, calc((100% - 48px) / 5));
+    --flag-min-height: calc(var(--flag-width) * 1.07);
+    --flag-top-padding: clamp(16px, calc(var(--flag-width) * 0.14), 20px);
+    --flag-bottom-padding: clamp(30px, calc(var(--flag-width) * 0.27), 38px);
+    --flag-total-offset: clamp(2px, calc(var(--flag-width) * 0.07), 10px);
   }
 }
 
@@ -1722,6 +1828,7 @@ onBeforeUnmount(() => {
   .subsection-title {
     font-size: 1rem;
   }
+
   .story,
   .card,
   .tags-box {
