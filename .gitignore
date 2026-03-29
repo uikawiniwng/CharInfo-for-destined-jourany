@@ -11,5 +11,8 @@ pnpm-debug.log*
 
 auto-imports.d.ts
 components.d.ts
+<<<<<<< HEAD
 screenshots
 charinfo_source
+=======
+>>>>>>> 859af7880ccfb04e96c9f301866693c2fac6de48
